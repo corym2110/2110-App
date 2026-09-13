@@ -8,7 +8,7 @@ import { useBookingsStore } from "@/stores/bookings";
 import { useAttendanceStore } from "@/stores/attendance";
 import { occurrencesForDate } from "@/lib/scheduleEngine";
 import { clock, formatDateLong, startOfToday } from "@/lib/time";
-import { memberByName } from "@/data/mock/members";
+import { useMembers } from "@/lib/useMembers";
 
 type Range = "Day" | "Week" | "Month";
 
@@ -28,21 +28,22 @@ const WEEK_OVERVIEW = [
   { label: "Fri", count: 6, pct: 86 },
 ];
 
-function memberHref(name: string): string {
-  const m = memberByName(name);
+function memberHref(name: string, members: { id: string; name: string }[]): string {
+  const m = members.find((mm) => mm.name === name);
   return m ? `/members/${m.id}` : "/members";
 }
 
 export default function DashboardPage() {
   const [range, setRange] = useState<Range>("Day");
-  const { bookings, series, moves } = useBookingsStore();
+  const { bookings, series, moves, cancellations } = useBookingsStore();
   const statuses = useAttendanceStore((s) => s.statuses);
+  const members = useMembers();
   const today = useMemo(() => startOfToday(), []);
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
 
   const occurrences = useMemo(
-    () => occurrencesForDate(today, moves, bookings, series),
-    [today, moves, bookings, series],
+    () => occurrencesForDate(today, moves, bookings, series, cancellations),
+    [today, moves, bookings, series, cancellations],
   );
 
   const stats = STATS_BY_RANGE[range];
@@ -62,7 +63,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
         {[
           { label: stats.sessionsLabel, value: stats.sessions, sub: stats.sessionsSub, href: "/schedule" },
-          { label: "Active members", value: "0", sub: "No members yet", href: "/members" },
+          { label: "Active members", value: String(members.length), sub: members.length === 0 ? "No members yet" : "", href: "/members" },
           { label: "Utilization", value: stats.utilization, sub: "of coached hours", href: "/reports" },
           { label: stats.revLabel, value: stats.revenue, sub: stats.revSub, href: "/reports" },
         ].map((c) => (
@@ -106,7 +107,7 @@ export default function DashboardPage() {
                     {isGroup ? "GR" : title.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
                   </span>
                   <Link
-                    href={isGroup ? "/schedule" : memberHref(title)}
+                    href={isGroup ? "/schedule" : memberHref(title, members)}
                     className="min-w-0 flex-1 truncate text-sm text-fg hover:text-link"
                   >
                     {title}

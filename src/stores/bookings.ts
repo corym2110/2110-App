@@ -37,9 +37,14 @@ interface BookingsState {
   bookings: OneOffBooking[];
   series: RecurringSeries[];
   moves: Record<string, MoveRecord>;
+  /** Occurrence keys (see Occurrence.key) that have been cancelled — hidden from occurrencesForDate. */
+  cancellations: Record<string, true>;
   addBooking: (b: Omit<OneOffBooking, "id">) => void;
   addSeries: (s: Omit<RecurringSeries, "id">) => void;
   move: (originKey: string, to: MoveRecord) => void;
+  updateBooking: (id: string, patch: Partial<Omit<OneOffBooking, "id">>) => void;
+  /** Cancels one occurrence: deletes it outright if it's a one-off booking, otherwise hides just this instance of its series/recurring row. */
+  cancelOccurrence: (sourceId: string, key: string) => void;
 }
 
 export const useBookingsStore = create<BookingsState>()(
@@ -48,9 +53,18 @@ export const useBookingsStore = create<BookingsState>()(
       bookings: [],
       series: [],
       moves: {},
+      cancellations: {},
       addBooking: (b) => set({ bookings: [...get().bookings, { ...b, id: `bk-${Date.now()}-${Math.round(Math.random() * 1e4)}` }] }),
       addSeries: (s) => set({ series: [...get().series, { ...s, id: `sr-${Date.now()}-${Math.round(Math.random() * 1e4)}` }] }),
       move: (originKey, to) => set({ moves: { ...get().moves, [originKey]: to } }),
+      updateBooking: (id, patch) => set({ bookings: get().bookings.map((b) => (b.id === id ? { ...b, ...patch } : b)) }),
+      cancelOccurrence: (sourceId, key) => {
+        if (get().bookings.some((b) => b.id === sourceId)) {
+          set({ bookings: get().bookings.filter((b) => b.id !== sourceId) });
+        } else {
+          set({ cancellations: { ...get().cancellations, [key]: true } });
+        }
+      },
     }),
     { name: "2110-bookings" },
   ),

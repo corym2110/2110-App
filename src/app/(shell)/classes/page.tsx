@@ -10,9 +10,9 @@ import { useAttendanceStore } from "@/stores/attendance";
 import { useWaitlistStore } from "@/stores/waitlists";
 import { useThemeStore } from "@/stores/theme";
 import { occurrencesForDate } from "@/lib/scheduleEngine";
-import { addDays, clock, formatDateShort, formatDateLong, isoOf, mondayOf, startOfToday } from "@/lib/time";
+import { addDays, clock, formatDateShort, formatDateLong, initialsOf, isoOf, mondayOf, startOfToday } from "@/lib/time";
 import { capacityOf, sessionTypeColor } from "@/data/mock/sessionTypes";
-import { MEMBERS, initialsOf } from "@/data/mock/members";
+import { useMembers } from "@/lib/useMembers";
 import { coachName } from "@/data/mock/coaches";
 import type { SessionTypeName } from "@/types";
 
@@ -25,17 +25,18 @@ export default function ClassesPage() {
   const [addPick, setAddPick] = useState("");
 
   const dark = useThemeStore((s) => s.theme === "dark");
-  const { bookings, series, moves } = useBookingsStore();
+  const { bookings, series, moves, cancellations } = useBookingsStore();
   const statuses = useAttendanceStore((s) => s.statuses);
   const setStatus = useAttendanceStore((s) => s.setStatus);
   const { waitlists, addToWaitlist, removeFromWaitlist, promoteFromWaitlist, classAdds, addToClass } = useWaitlistStore();
+  const members = useMembers();
 
   const weekStart = useMemo(() => addDays(mondayOf(startOfToday()), offset * 7), [offset]);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
   const dayGroups = days
     .map((date) => {
-      const occ = occurrencesForDate(date, moves, bookings, series).filter((o) => kinds[o.type]);
+      const occ = occurrencesForDate(date, moves, bookings, series, cancellations).filter((o) => kinds[o.type]);
       return { date, occ };
     })
     .filter((g) => g.occ.length > 0);
@@ -169,7 +170,7 @@ export default function ClassesPage() {
               {[...(selected.roster ?? []), ...(classAdds[selected.key] ?? [])].map((n) => {
                 const key = `${selected.iso}-${selected.start}-${selected.coach}-${n}`;
                 const status = statuses[key];
-                const member = MEMBERS.find((m) => m.name === n);
+                const member = members.find((m) => m.name === n);
                 return (
                   <div key={n} className="flex items-center gap-1.5">
                     <button
@@ -209,7 +210,7 @@ export default function ClassesPage() {
                 value={addPick}
                 onChange={setAddPick}
                 placeholder="Add a member…"
-                options={MEMBERS.filter(
+                options={members.filter(
                   (m) => !(selected!.roster ?? []).includes(m.name) && !(classAdds[selected!.key] ?? []).includes(m.name),
                 ).map((m) => ({ value: m.name, label: m.name }))}
                 className="h-9 min-w-0 flex-1 rounded-[9px] px-2 text-[13.5px]"

@@ -7,7 +7,7 @@ import { HeaderButton } from "@/components/ui/HeaderButton";
 import { ExportIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useThemeStore } from "@/stores/theme";
-import { MEMBERS } from "@/data/mock/members";
+import { useMembers } from "@/lib/useMembers";
 import { sessionTypeColor } from "@/data/mock/sessionTypes";
 import {
   REPORT_SETS,
@@ -35,6 +35,7 @@ export default function ReportsPage() {
   const [range, setRange] = useState<ReportRange>("This week");
   const [exportOpen, setExportOpen] = useState(false);
   const [exported, setExported] = useState<string | null>(null);
+  const members = useMembers();
   const dark = useThemeStore((s) => s.theme === "dark");
 
   useHeaderAction(
@@ -200,7 +201,7 @@ export default function ReportsPage() {
             {FOLLOW_UP.map(([name, reason, tone]) => (
               <div key={name} className="flex items-center gap-2.5">
                 <span className={`h-[7px] w-[7px] flex-none rounded-full ${tone === "bad" ? "bg-bad" : "bg-amber-500"}`} />
-                <Link href={`/members/${MEMBERS.find((m) => m.name === name)?.id ?? ""}`} className="min-w-0 flex-1 truncate text-[13.5px] hover:text-link">
+                <Link href={`/members/${members.find((m) => m.name === name)?.id ?? ""}`} className="min-w-0 flex-1 truncate text-[13.5px] hover:text-link">
                   {name}
                 </Link>
                 <span className="flex-none text-[12.5px] text-muted">{reason}</span>

@@ -8,6 +8,7 @@ import { useNotificationsStore } from "@/stores/notifications";
 import { useHeaderActionStore } from "@/stores/headerAction";
 import { NOTIFICATIONS } from "@/data/mock/notifications";
 import { searchHits } from "@/lib/search";
+import { useMembers } from "@/lib/useMembers";
 import {
   BellIcon,
   MoonIcon,
@@ -30,6 +31,7 @@ export function Header() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const members = useMembers();
 
   useEffect(() => {
     function onMouseDown(ev: MouseEvent) {
@@ -52,7 +54,7 @@ export function Header() {
     };
   }, []);
 
-  const hits = searchHits(query);
+  const hits = searchHits(query, members);
   const unread = NOTIFICATIONS.filter((n) => !read[n.id]).length;
 
   return (

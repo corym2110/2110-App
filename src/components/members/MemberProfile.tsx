@@ -1,24 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useThemeStore } from "@/stores/theme";
+import { useBookingsStore } from "@/stores/bookings";
+import { useAttendanceStore, slotKey } from "@/stores/attendance";
+import { occurrencesForDate } from "@/lib/scheduleEngine";
+import { coachName } from "@/data/mock/coaches";
 import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@/server/members";
 import { sessionTypeColor, SHORT_LABEL } from "@/data/mock/sessionTypes";
-import { initialsOf, money } from "@/lib/time";
+import { addDays, formatDateShort, initialsOf, money, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
 
-function primaryTypeOf(plan: string): SessionTypeName {
-  if (plan.startsWith("PT")) return "Personal Training";
-  if (plan.startsWith("Group")) return "Group Training";
-  if (plan.startsWith("Remote")) return "Remote Consult";
-  if (plan.startsWith("Class")) return "Class";
-  if (plan.startsWith("Assessment")) return "Bodpod";
-  return "Blueprint and Baseline";
-}
+const HISTORY_LOOKBACK_DAYS = 90;
 
 export function MemberProfile({
   member,
@@ -36,16 +33,28 @@ export function MemberProfile({
   const [addPick, setAddPick] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  const type = primaryTypeOf(member.plan);
-  const color = sessionTypeColor(type, dark);
+  const { bookings, series, moves, cancellations } = useBookingsStore();
+  const statuses = useAttendanceStore((s) => s.statuses);
 
-  const history = [
-    { date: "Sep 2, 2026", pay: member.balance > 0 ? "Not paid" : "Session package" },
-    { date: "Aug 26, 2026", pay: "Session package" },
-    { date: "Aug 19, 2026", pay: "Card on file" },
-    { date: "Aug 12, 2026", type: "Bodpod" as SessionTypeName, pay: "Card on file" },
-    { date: "Aug 5, 2026", pay: "Session package" },
-  ];
+  const history = useMemo(() => {
+    const today = startOfToday();
+    const rows: { iso: string; start: number; type: SessionTypeName; coach: string; status: string | null }[] = [];
+    for (let i = 0; i < HISTORY_LOOKBACK_DAYS; i++) {
+      const date = addDays(today, -i);
+      const occs = occurrencesForDate(date, moves, bookings, series, cancellations);
+      for (const o of occs) {
+        if (o.name !== member.name && !(o.roster ?? []).includes(member.name)) continue;
+        rows.push({
+          iso: o.iso,
+          start: o.start,
+          type: o.type,
+          coach: coachName(o.coach),
+          status: statuses[slotKey(o.iso, o.start, o.coach, member.name)] ?? null,
+        });
+      }
+    }
+    return rows.sort((a, b) => (a.iso === b.iso ? b.start - a.start : b.iso < a.iso ? -1 : 1));
+  }, [bookings, series, moves, cancellations, statuses, member.name]);
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -236,18 +245,24 @@ export function MemberProfile({
             Open schedule
           </Link>
         </div>
-        {history.map((h) => {
-          const t = h.type ?? type;
-          const paid = h.pay !== "Not paid";
+        {history.length === 0 && (
+          <div className="py-6 text-center text-[13.5px] text-muted">No sessions yet.</div>
+        )}
+        {history.map((h, i) => {
+          const label = h.status ?? "Completed";
+          const badgeClass =
+            h.status === "No-show" || h.status === "Late cancel" || h.status === "Cancelled"
+              ? "bg-bad/10 text-bad"
+              : "bg-ok/15 text-ok";
           return (
-            <div key={h.date} className="flex items-center gap-4 border-b border-divider py-2.5 last:border-b-0">
-              <span className="w-[112px] flex-none text-[13.5px] tabular-nums text-muted">{h.date}</span>
-              <span className="w-[66px] flex-none text-[13px] font-semibold" style={{ color: t === type ? color : sessionTypeColor(t, dark) }}>
-                {SHORT_LABEL[t]}
+            <div key={`${h.iso}-${h.start}-${i}`} className="flex items-center gap-4 border-b border-divider py-2.5 last:border-b-0">
+              <span className="w-[112px] flex-none text-[13.5px] tabular-nums text-muted">{formatDateShort(new Date(`${h.iso}T00:00:00`))}</span>
+              <span className="w-[66px] flex-none text-[13px] font-semibold" style={{ color: sessionTypeColor(h.type, dark) }}>
+                {SHORT_LABEL[h.type]}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[13.5px]">{t}</span>
-              <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{member.coach}</span>
-              <span className={`w-24 flex-none rounded-md py-0.5 text-center text-[11.5px] ${paid ? "bg-ok/15 text-ok" : "bg-bad/10 text-bad"}`}>{h.pay}</span>
+              <span className="min-w-0 flex-1 truncate text-[13.5px]">{h.type}</span>
+              <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{h.coach}</span>
+              <span className={`w-24 flex-none rounded-md py-0.5 text-center text-[11.5px] ${badgeClass}`}>{label}</span>
             </div>
           );
         })}

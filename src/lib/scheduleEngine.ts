@@ -27,6 +27,7 @@ export function occurrencesForDate(
   moves: Record<string, MoveRecord>,
   bookings: OneOffBooking[],
   series: RecurringSeries[],
+  cancellations: Record<string, true> = {},
 ): Occurrence[] {
   const iso = isoOf(date);
   const dow = dowIndex(date);
@@ -71,7 +72,7 @@ export function occurrencesForDate(
       sourceId: s.id,
     }));
 
-  const local = [...fromRecurring, ...fromBookings, ...fromSeries].filter((o) => !moves[o.key]);
+  const local = [...fromRecurring, ...fromBookings, ...fromSeries].filter((o) => !moves[o.key] && !cancellations[o.key]);
 
   const movedIn: Occurrence[] = [];
   for (const [k, m] of Object.entries(moves)) {
@@ -86,7 +87,9 @@ export function occurrencesForDate(
     const coach = m.coach ?? rec?.coach ?? bk?.coach ?? sr?.coach;
     const roster = rec?.roster ?? bk?.roster;
     if (duration == null || name == null || type == null || coach == null) continue;
-    const occurrence: Occurrence = { key: originKey(sourceId, iso), iso, start: m.start, duration, name, type, coach, roster, sourceId, moved: true };
+    const key = originKey(sourceId, iso);
+    if (cancellations[key]) continue;
+    const occurrence: Occurrence = { key, iso, start: m.start, duration, name, type, coach, roster, sourceId, moved: true };
     movedIn.push(occurrence);
   }
 

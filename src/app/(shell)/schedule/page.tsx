@@ -11,6 +11,7 @@ import { useAvailabilityStore } from "@/stores/availability";
 import { useBookingsStore } from "@/stores/bookings";
 import { occurrencesForDate, type Occurrence } from "@/lib/scheduleEngine";
 import { addDays, formatDateShort, formatDateLong, isoOf, mondayOf, startOfToday, MONTHS } from "@/lib/time";
+import { useMembers } from "@/lib/useMembers";
 import { COACHES } from "@/data/mock/coaches";
 import { DayColumn } from "@/components/schedule/DayColumn";
 import { MonthGrid } from "@/components/schedule/MonthGrid";
@@ -38,10 +39,12 @@ function ScheduleInner() {
   );
   const [pendingMove, setPendingMove] = useState<{ occurrence: Occurrence; iso: string; start: number } | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
+  const [editing, setEditing] = useState<Occurrence | null>(null);
 
   const dark = useThemeStore((s) => s.theme === "dark");
   const availability = useAvailabilityStore((s) => s.byCoach);
-  const { bookings, series, moves, move } = useBookingsStore();
+  const { bookings, series, moves, cancellations, move } = useBookingsStore();
+  const members = useMembers();
 
   useHeaderAction(
     <HeaderButton onClick={() => setDraft({ iso: isoOf(addDays(startOfToday(), offset)), start: 540 })}>
@@ -71,13 +74,13 @@ function ScheduleInner() {
         : `${MONTHS[monthAnchor.getMonth()]} ${monthAnchor.getFullYear()}`;
 
   function occurrencesFor(date: Date): Occurrence[] {
-    return occurrencesForDate(date, moves, bookings, series).filter((o) => coachFilter === "all" || o.coach === coachFilter);
+    return occurrencesForDate(date, moves, bookings, series, cancellations).filter((o) => coachFilter === "all" || o.coach === coachFilter);
   }
 
   function handleDrop(date: Date, startMin: number) {
     if (!dragging) return;
     // Find the dragged occurrence among all currently rendered columns.
-    const all = columns.flatMap((d) => occurrencesForDate(d, moves, bookings, series));
+    const all = columns.flatMap((d) => occurrencesForDate(d, moves, bookings, series, cancellations));
     const source = all.find((o) => o.key === dragging.key);
     if (!source) {
       setDragging(null);
@@ -185,8 +188,27 @@ function ScheduleInner() {
         )}
       </div>
 
-      {selected && <DetailPanel occurrence={selected} onClose={() => setSelected(null)} />}
-      {draft && <BookingDialog iso={draft.iso} start={draft.start} onClose={() => setDraft(null)} />}
+      {selected && (
+        <DetailPanel
+          occurrence={selected}
+          members={members}
+          onClose={() => setSelected(null)}
+          onEdit={(o) => {
+            setEditing(o);
+            setSelected(null);
+          }}
+        />
+      )}
+      {draft && <BookingDialog iso={draft.iso} start={draft.start} members={members} onClose={() => setDraft(null)} />}
+      {editing && (
+        <BookingDialog
+          iso={editing.iso}
+          start={editing.start}
+          members={members}
+          editing={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       {pendingMove && (
         <div className="fixed inset-0 z-[70] grid place-items-center bg-black/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && setPendingMove(null)}>

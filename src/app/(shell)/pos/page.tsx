@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
@@ -8,9 +8,9 @@ import { HeaderButton } from "@/components/ui/HeaderButton";
 import { Select } from "@/components/ui/Select";
 import { PlusIcon, PencilIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
-import { useSharedAccountsStore } from "@/stores/sharedAccounts";
+import { useMembers } from "@/lib/useMembers";
+import { getSharedAccountLinks, type SharedAccountLink } from "@/server/members";
 import { CATALOG, matchProduct } from "@/data/mock/catalog";
-import { MEMBERS } from "@/data/mock/members";
 import { money } from "@/lib/time";
 import type { Product } from "@/types";
 
@@ -19,7 +19,7 @@ const PAYMENT_METHODS = ["Card", "Cash", "E-transfer", "Package credit"];
 
 function POSInner() {
   const params = useSearchParams();
-  const initialMember = params.get("member") ? decodeURIComponent(params.get("member")!) : "Walk-in";
+  const initialMemberName = params.get("member") ? decodeURIComponent(params.get("member")!) : null;
   const preselect = useMemo(() => {
     const type = params.get("type");
     if (!type) return null;
@@ -27,19 +27,45 @@ function POSInner() {
     return matchProduct(decodeURIComponent(type), coach);
   }, [params]);
 
-  const byPayer = useSharedAccountsStore((s) => s.byPayer);
+  const members = useMembers();
 
   const [category, setCategory] = useState<Product["category"] | "All">("All");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, number>>(preselect ? { [preselect.id]: 1 } : {});
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
-  const [member, setMember] = useState(initialMember);
+  /** Selected member's id, or "" for Walk-in. null = not yet chosen, fall back to the ?member= query param once members load. */
+  const [chosenMember, setChosenMember] = useState<string | null>(null);
   const [onBehalf, setOnBehalf] = useState("");
+  const [linked, setLinked] = useState<SharedAccountLink[]>([]);
   const [discMode, setDiscMode] = useState<"%" | "$">("%");
   const [discValue, setDiscValue] = useState("");
   const [method, setMethod] = useState("Card");
   const [receipt, setReceipt] = useState<string | null>(null);
+
+  const member = chosenMember ?? members.find((m) => m.name === initialMemberName)?.id ?? "";
+  const setMember = (id: string) => setChosenMember(id);
+
+  // Reset the "purchasing for" pick and cached links whenever the selected member changes.
+  const [linksMember, setLinksMember] = useState(member);
+  if (member !== linksMember) {
+    setLinksMember(member);
+    setOnBehalf("");
+    setLinked([]);
+  }
+
+  useEffect(() => {
+    if (!member) return;
+    let cancelled = false;
+    getSharedAccountLinks(member).then((links) => {
+      if (!cancelled) setLinked(links.paysFor);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [member]);
+
+  const memberName = member ? (members.find((m) => m.id === member)?.name ?? "Member") : "Walk-in";
 
   useHeaderAction(
     <HeaderButton
@@ -73,8 +99,6 @@ function POSInner() {
   const tax = subtotal * 0.05;
   const total = subtotal + tax;
   const needsAmount = lines.some((p) => p.variablePrice && !unitPrice(p));
-
-  const linked = byPayer[member] ?? [];
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -153,12 +177,12 @@ function POSInner() {
             <Select
               value={member}
               onChange={setMember}
-              options={[{ value: "Walk-in", label: "Walk-in" }, ...MEMBERS.map((m) => ({ value: m.name, label: m.name }))]}
+              options={[{ value: "", label: "Walk-in" }, ...members.map((m) => ({ value: m.id, label: m.name }))]}
               className="h-[38px] rounded-lg px-2 text-sm"
             />
           </label>
-          {member !== "Walk-in" && (
-            <Link href={`/members/${MEMBERS.find((m) => m.name === member)?.id ?? ""}`} className="-mt-1.5 flex items-center gap-1.5 text-[12.5px] text-link hover:text-link-hover">
+          {member && (
+            <Link href={`/members/${member}`} className="-mt-1.5 flex items-center gap-1.5 text-[12.5px] text-link hover:text-link-hover">
               View profile
             </Link>
           )}
@@ -270,7 +294,7 @@ function POSInner() {
                 value={onBehalf}
                 onChange={setOnBehalf}
                 placeholder="Themselves"
-                options={[{ value: "", label: "Themselves" }, ...linked.map((n) => ({ value: n, label: n }))]}
+                options={[{ value: "", label: "Themselves" }, ...linked.map((l) => ({ value: l.id, label: l.name }))]}
                 className="h-[34px] w-full rounded-lg px-2 text-[13.5px]"
               />
             </div>
@@ -312,7 +336,7 @@ function POSInner() {
           <button
             type="button"
             disabled={lines.length === 0 || needsAmount}
-            onClick={() => setReceipt(`${money(total)} charged to ${member}`)}
+            onClick={() => setReceipt(`${money(total)} charged to ${memberName}`)}
             className="h-11 rounded-full bg-accent text-[14.5px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-45"
           >
             {lines.length === 0 ? "Add items to charge" : `Charge ${money(total)}`}

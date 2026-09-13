@@ -6,12 +6,11 @@ import type { Occurrence } from "@/lib/scheduleEngine";
 import { useAttendanceStore, slotKey } from "@/stores/attendance";
 import { useWaitlistStore } from "@/stores/waitlists";
 import { coachName } from "@/data/mock/coaches";
-import { MEMBERS, memberByName, initialsOf } from "@/data/mock/members";
 import { capacityOf } from "@/data/mock/sessionTypes";
-import { clock, formatDateLong } from "@/lib/time";
-import { XIcon } from "@/components/ui/icons";
+import { clock, formatDateLong, initialsOf } from "@/lib/time";
+import { XIcon, PencilIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
-import type { AttendanceStatus } from "@/types";
+import type { AttendanceStatus, Member } from "@/types";
 
 const STATUS_OPTIONS: AttendanceStatus[] = ["Checked in", "No-show", "Late cancel"];
 
@@ -36,7 +35,17 @@ function StatusButtons({ attKey }: { attKey: string }) {
   );
 }
 
-export function DetailPanel({ occurrence, onClose }: { occurrence: Occurrence; onClose: () => void }) {
+export function DetailPanel({
+  occurrence,
+  members,
+  onClose,
+  onEdit,
+}: {
+  occurrence: Occurrence;
+  members: Member[];
+  onClose: () => void;
+  onEdit: (occurrence: Occurrence) => void;
+}) {
   const statuses = useAttendanceStore((s) => s.statuses);
   const setStatus = useAttendanceStore((s) => s.setStatus);
   const { waitlists, classAdds, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist } = useWaitlistStore();
@@ -48,7 +57,7 @@ export function DetailPanel({ occurrence, onClose }: { occurrence: Occurrence; o
   const head = isGroup ? roster.length : 0;
   const full = cap > 0 && head >= cap;
   const waiting = waitlists[occurrence.key] ?? [];
-  const member = !isGroup ? memberByName(occurrence.name) : undefined;
+  const member = !isGroup ? members.find((m) => m.name === occurrence.name) : undefined;
 
   return (
     <div className="panel-shadow fixed bottom-0 right-0 top-16 z-50 flex w-[352px] max-w-full flex-col overflow-y-auto border-l border-divider bg-surface">
@@ -59,6 +68,14 @@ export function DetailPanel({ occurrence, onClose }: { occurrence: Occurrence; o
             {formatDateLong(new Date(`${occurrence.iso}T00:00:00`))} · {clock(occurrence.start)} – {clock(occurrence.start + occurrence.duration)}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => onEdit(occurrence)}
+          title="Edit session"
+          className="grid h-[30px] w-[30px] flex-none place-items-center rounded-lg text-muted hover:bg-row hover:text-fg"
+        >
+          <PencilIcon size={15} />
+        </button>
         <button type="button" onClick={onClose} title="Close" className="grid h-[30px] w-[30px] flex-none place-items-center rounded-lg text-muted hover:bg-row hover:text-fg">
           <XIcon size={16} />
         </button>
@@ -121,7 +138,7 @@ export function DetailPanel({ occurrence, onClose }: { occurrence: Occurrence; o
             {roster.map((n) => {
               const key = slotKey(occurrence.iso, occurrence.start, occurrence.coach, n);
               const status = statuses[key];
-              const m = memberByName(n);
+              const m = members.find((mm) => mm.name === n);
               return (
                 <div key={n} className="flex items-center gap-1.5">
                   <button
@@ -158,7 +175,7 @@ export function DetailPanel({ occurrence, onClose }: { occurrence: Occurrence; o
               value={addPick}
               onChange={setAddPick}
               placeholder="Add a member…"
-              options={MEMBERS.filter((m) => !roster.includes(m.name)).map((m) => ({ value: m.name, label: m.name }))}
+              options={members.filter((m) => !roster.includes(m.name)).map((m) => ({ value: m.name, label: m.name }))}
               className="h-9 min-w-0 flex-1 rounded-[9px] px-2 text-[13.5px]"
             />
             <button

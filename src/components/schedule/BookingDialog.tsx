@@ -2,14 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { COACHES } from "@/data/mock/coaches";
-import { MEMBERS } from "@/data/mock/members";
 import { SESSION_TYPES, capacityOf, sessionTypeByName } from "@/data/mock/sessionTypes";
 import { useAvailabilityStore } from "@/stores/availability";
 import { useBookingsStore } from "@/stores/bookings";
-import { occurrencesForDate } from "@/lib/scheduleEngine";
+import { occurrencesForDate, type Occurrence } from "@/lib/scheduleEngine";
 import { offReason } from "@/lib/availability";
 import { clock, formatDateLong } from "@/lib/time";
-import type { CoachId, SessionTypeName } from "@/types";
+import type { CoachId, Member, SessionTypeName } from "@/types";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 
@@ -19,28 +18,56 @@ const TIME_OPTIONS: number[] = (() => {
   return out;
 })();
 
-export function BookingDialog({ iso, start, onClose }: { iso: string; start: number; onClose: () => void }) {
-  const [type, setType] = useState<SessionTypeName>("Personal Training");
-  const [coach, setCoach] = useState<CoachId>("CM");
-  const [time, setTime] = useState(start);
-  const [client, setClient] = useState("");
+export function BookingDialog({
+  iso,
+  start,
+  onClose,
+  members,
+  editing,
+}: {
+  iso: string;
+  start: number;
+  onClose: () => void;
+  members: Member[];
+  editing?: Occurrence;
+}) {
+  const [type, setType] = useState<SessionTypeName>(editing?.type ?? "Personal Training");
+  const [coach, setCoach] = useState<CoachId>(editing?.coach ?? "CM");
+  const [time, setTime] = useState(editing?.start ?? start);
+  const [client, setClient] = useState(editing?.name ?? "");
   const [recur, setRecur] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   const byCoach = useAvailabilityStore((s) => s.byCoach);
-  const { bookings, series, moves, addBooking, addSeries } = useBookingsStore();
+  const { bookings, series, moves, cancellations, addBooking, addSeries, updateBooking, cancelOccurrence } = useBookingsStore();
 
   const date = useMemo(() => new Date(`${iso}T00:00:00`), [iso]);
   const duration = sessionTypeByName(type).duration;
   const warn = offReason(byCoach[coach], date, time, duration);
   const cap = capacityOf(type);
-  const existing = occurrencesForDate(date, moves, bookings, series).filter((o) => o.start === time && o.coach === coach && o.type === type);
+  const existing = occurrencesForDate(date, moves, bookings, series, cancellations).filter(
+    (o) => o.start === time && o.coach === coach && o.type === type && o.key !== editing?.key,
+  );
   const head = existing.reduce((a, o) => a + (o.roster?.length ?? 1), 0);
   const full = cap > 0 && head >= cap;
 
-  const canRecur = type === "Personal Training" || type === "Group Training";
+  const canRecur = !editing && (type === "Personal Training" || type === "Group Training");
 
   function confirm() {
     if (!client.trim() && type !== "Group Training" && type !== "Class") return;
+
+    if (editing) {
+      const isOneOff = bookings.some((b) => b.id === editing.sourceId);
+      if (isOneOff) {
+        updateBooking(editing.sourceId, { start: time, duration, type, coach, name: client.trim() });
+      } else {
+        cancelOccurrence(editing.sourceId, editing.key);
+        addBooking({ iso, start: time, duration, type, coach, name: client.trim() });
+      }
+      onClose();
+      return;
+    }
+
     if (recur && canRecur) {
       const dow = date.getDay();
       const label = (["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const)[dow];
@@ -64,7 +91,7 @@ export function BookingDialog({ iso, start, onClose }: { iso: string; start: num
       <div className="popover-shadow flex w-full max-w-[420px] flex-col gap-3.5 rounded-2xl bg-surface p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-medium tracking-tight">New session</div>
+            <div className="text-lg font-medium tracking-tight">{editing ? "Edit session" : "New session"}</div>
             <div className="text-[13px] text-muted">
               {formatDateLong(date)} · {clock(time)}
             </div>
@@ -115,7 +142,7 @@ export function BookingDialog({ iso, start, onClose }: { iso: string; start: num
             className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
           />
           <datalist id="member-list">
-            {MEMBERS.map((m) => (
+            {members.map((m) => (
               <option key={m.id} value={m.name} />
             ))}
           </datalist>
@@ -135,13 +162,43 @@ export function BookingDialog({ iso, start, onClose }: { iso: string; start: num
         )}
         {full && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">This slot is already full ({head} of {cap}).</div>}
 
-        <div className="mt-1 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="h-10 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
-            Cancel
-          </button>
-          <button type="button" onClick={confirm} className="h-10 rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent">
-            {warn || full ? "Book anyway" : "Book session"}
-          </button>
+        {editing && confirmCancel && (
+          <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">
+            Cancel this session? It will be removed from the calendar.
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  cancelOccurrence(editing.sourceId, editing.key);
+                  onClose();
+                }}
+                className="h-8 rounded-full bg-bad px-3.5 text-[12.5px] font-semibold text-white"
+              >
+                Yes, cancel it
+              </button>
+              <button type="button" onClick={() => setConfirmCancel(false)} className="h-8 rounded-full border border-divider px-3.5 text-[12.5px] hover:bg-row">
+                Never mind
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-1 flex items-center justify-between gap-2">
+          {editing ? (
+            <button type="button" onClick={() => setConfirmCancel(true)} className="h-10 rounded-full border border-bad/40 px-4 text-[13.5px] font-medium text-bad hover:bg-bad/10">
+              Cancel session
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="h-10 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
+              Close
+            </button>
+            <button type="button" onClick={confirm} className="h-10 rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent">
+              {editing ? "Save changes" : warn || full ? "Book anyway" : "Book session"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

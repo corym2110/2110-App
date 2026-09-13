@@ -1,4 +1,5 @@
-import { MEMBERS, initialsOf } from "@/data/mock/members";
+import { initialsOf } from "@/lib/time";
+import type { Member } from "@/types";
 
 export interface SearchHit {
   title: string;
@@ -27,8 +28,8 @@ const SESSION_HINTS: [string, string][] = [
   ["Blueprint and Baseline", "Session type · 90 min · no charge"],
 ];
 
-export function buildSearchIndex(): SearchHit[] {
-  const memberHits: SearchHit[] = MEMBERS.map((m) => ({
+export function buildSearchIndex(members: Member[]): SearchHit[] {
+  const memberHits: SearchHit[] = members.map((m) => ({
     title: m.name,
     sub: "Member profile",
     badge: initialsOf(m.name),
@@ -46,10 +47,10 @@ export function buildSearchIndex(): SearchHit[] {
   return [...memberHits, ...sessionHits, ...pageHits];
 }
 
-export function searchHits(query: string, limit = 8): SearchHit[] {
+export function searchHits(query: string, members: Member[], limit = 8): SearchHit[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  return buildSearchIndex()
+  return buildSearchIndex(members)
     .filter((i) => i.title.toLowerCase().includes(q) || i.sub.toLowerCase().includes(q))
     .slice(0, limit);
 }
