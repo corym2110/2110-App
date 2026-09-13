@@ -46,13 +46,23 @@ export function BookingDialog({
   const date = useMemo(() => new Date(`${iso}T00:00:00`), [iso]);
 
   const [recur, setRecur] = useState(false);
-  const [recurDays, setRecurDays] = useState<Record<DayOfWeek, boolean>>(() => {
-    const init: Record<DayOfWeek, boolean> = { Mon: false, Tue: false, Wed: false, Thu: false, Fri: false, Sat: false, Sun: false };
-    init[DOW_LABELS[dowIndex(date)]] = true;
-    return init;
-  });
+  /** Selected recurring days, each with its own start time (minutes from midnight). */
+  const [recurDays, setRecurDays] = useState<Partial<Record<DayOfWeek, number>>>(() => ({
+    [DOW_LABELS[dowIndex(date)]]: editing?.start ?? start,
+  }));
   const [endMode, setEndMode] = useState<"never" | "weeks">("never");
   const [endWeeks, setEndWeeks] = useState(12);
+
+  function toggleRecurDay(d: DayOfWeek) {
+    setRecurDays((r) => {
+      if (r[d] != null) {
+        const next = { ...r };
+        delete next[d];
+        return next;
+      }
+      return { ...r, [d]: time };
+    });
+  }
 
   const duration = sessionTypeByName(type).duration;
   const warn = offReason(byCoach[coach], date, time, duration);
@@ -64,7 +74,7 @@ export function BookingDialog({
   const full = cap > 0 && head >= cap;
 
   const canRecur = !editing && (type === "Personal Training" || type === "Group Training");
-  const selectedDays = DOW_LABELS.filter((d) => recurDays[d]);
+  const selectedDays = DOW_LABELS.filter((d) => recurDays[d] != null);
   const recurReady = !recur || selectedDays.length > 0;
 
   function confirm() {
@@ -84,14 +94,12 @@ export function BookingDialog({
     }
 
     if (recur && canRecur) {
-      const days: Partial<Record<DayOfWeek, number>> = {};
-      for (const d of selectedDays) days[d] = time;
       addSeries({
         client: client.trim(),
         type,
         coach,
         duration,
-        days,
+        days: recurDays,
         fromIso: iso,
         toIso: endMode === "weeks" ? isoOf(addDays(date, endWeeks * 7)) : undefined,
       });
@@ -103,7 +111,7 @@ export function BookingDialog({
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center bg-black/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="popover-shadow flex w-full max-w-[420px] flex-col gap-3.5 rounded-2xl bg-surface p-5">
+      <div className="popover-shadow flex max-h-[90vh] w-full max-w-[420px] flex-col gap-3.5 overflow-y-auto rounded-2xl bg-surface p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-lg font-medium tracking-tight">{editing ? "Edit session" : "New session"}</div>
@@ -169,19 +177,31 @@ export function BookingDialog({
               <>
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[11.5px] tracking-wider text-muted uppercase">Repeat on</span>
-                  <div className="flex gap-1">
-                    {DOW_LABELS.map((d) => (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => setRecurDays((r) => ({ ...r, [d]: !r[d] }))}
-                        className={`h-8 flex-1 rounded-lg border text-[11.5px] ${
-                          recurDays[d] ? "border-accent bg-row font-semibold text-fg" : "border-divider text-muted"
-                        }`}
-                      >
-                        {d}
-                      </button>
-                    ))}
+                  <div className="flex flex-col gap-1.5">
+                    {DOW_LABELS.map((d) => {
+                      const active = recurDays[d] != null;
+                      return (
+                        <div key={d} className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => toggleRecurDay(d)}
+                            className={`h-8 w-12 flex-none rounded-lg border text-[11.5px] ${
+                              active ? "border-accent bg-row font-semibold text-fg" : "border-divider text-muted"
+                            }`}
+                          >
+                            {d}
+                          </button>
+                          {active && (
+                            <Select
+                              value={String(recurDays[d])}
+                              onChange={(v) => setRecurDays((r) => ({ ...r, [d]: Number(v) }))}
+                              options={TIME_OPTIONS.map((t) => ({ value: String(t), label: clock(t) }))}
+                              className="h-8 flex-1 rounded-lg px-2 text-[12px]"
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                   {!recurReady && <div className="text-[12px] text-bad">Pick at least one day.</div>}
                 </div>
