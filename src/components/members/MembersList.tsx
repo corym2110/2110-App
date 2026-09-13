@@ -7,6 +7,7 @@ import { HeaderButton } from "@/components/ui/HeaderButton";
 import { PlusIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { initialsOf, money } from "@/lib/time";
+import { AddMemberDialog } from "@/components/members/AddMemberDialog";
 import type { Member } from "@/types";
 
 type Filter = "All" | "Balance due" | "Packages" | "Memberships";
@@ -14,9 +15,10 @@ const FILTERS: Filter[] = ["All", "Balance due", "Packages", "Memberships"];
 
 export function MembersList({ members }: { members: Member[] }) {
   const [filter, setFilter] = useState<Filter>("All");
+  const [addOpen, setAddOpen] = useState(false);
 
   useHeaderAction(
-    <HeaderButton>
+    <HeaderButton onClick={() => setAddOpen(true)}>
       <PlusIcon size={15} />
       Add member
     </HeaderButton>,
@@ -86,6 +88,8 @@ export function MembersList({ members }: { members: Member[] }) {
           </Link>
         ))}
       </Card>
+
+      {addOpen && <AddMemberDialog onClose={() => setAddOpen(false)} />}
     </div>
   );
 }

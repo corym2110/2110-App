@@ -28,6 +28,40 @@ export async function getMemberById(id: string): Promise<Member | null> {
   return row ? toMember(row) : null;
 }
 
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+export interface NewMemberInput {
+  name: string;
+  email: string;
+  phone: string;
+  plan: string;
+}
+
+export async function addMember(input: NewMemberInput): Promise<string> {
+  const name = input.name.trim();
+  const email = input.email.trim();
+  if (!name || !email) throw new Error("Name and email are required.");
+
+  const coach = await db.coach.findFirst({ where: { active: true }, orderBy: { name: "asc" } });
+  const now = new Date();
+
+  const row = await db.member.create({
+    data: {
+      name,
+      email,
+      phone: input.phone.trim(),
+      plan: input.plan,
+      balance: 0,
+      since: `${MONTHS_SHORT[now.getMonth()]} ${now.getFullYear()}`,
+      lastSession: "No sessions yet",
+      coachId: coach?.id,
+    },
+  });
+
+  revalidatePath("/members");
+  return row.id;
+}
+
 export interface SharedAccountLinks {
   /** Members this person is approved to purchase for. */
   paysFor: string[];
