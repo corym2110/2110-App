@@ -18,11 +18,7 @@ const STATS_BY_RANGE: Record<Range, { sessionsLabel: string; sessions: string; s
   Month: { sessionsLabel: "Sessions this month", sessions: "112", sessionsSub: "9 completed", utilization: "83%", revLabel: "Revenue MTD", revenue: "$4,280", revSub: "vs $3,910 last month" },
 };
 
-const ATTENTION: { title: string; sub: string; dot: string; href: string }[] = [
-  { title: "Marcus Ellis cancelled 8:30 AM", sub: "Third cancellation this month", dot: "bg-bad", href: "/members/marcus-ellis" },
-  { title: "2 packages expiring this week", sub: "Priya Raman, Dan Whitfield", dot: "bg-amber-500", href: "/members" },
-  { title: "3:00 PM slot is open", sub: "4 members on the waitlist", dot: "bg-accent", href: "/schedule" },
-];
+const ATTENTION: { title: string; sub: string; dot: string; href: string }[] = [];
 
 const WEEK_OVERVIEW = [
   { label: "Mon", count: 7, pct: 100 },
@@ -66,7 +62,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
         {[
           { label: stats.sessionsLabel, value: stats.sessions, sub: stats.sessionsSub, href: "/schedule" },
-          { label: "Active members", value: "148", sub: "+6 this month", href: "/members" },
+          { label: "Active members", value: "0", sub: "No members yet", href: "/members" },
           { label: "Utilization", value: stats.utilization, sub: "of coached hours", href: "/reports" },
           { label: stats.revLabel, value: stats.revenue, sub: stats.revSub, href: "/reports" },
         ].map((c) => (

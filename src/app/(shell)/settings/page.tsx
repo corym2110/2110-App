@@ -21,9 +21,6 @@ const TAB_LABELS: Record<Tab, string> = {
 
 const STAFF = [
   { name: "Cory Martin", initials: "CM", email: "cory@2110fitness.com", role: "Facility Supervisor", access: "Full access", active: true },
-  { name: "Jess Tran", initials: "JT", email: "jess@2110fitness.com", role: "Coach", access: "Schedule, members, POS", active: true },
-  { name: "Andre Reyes", initials: "AR", email: "andre@2110fitness.com", role: "Coach", access: "Schedule, members", active: true },
-  { name: "Sam Whitlow", initials: "SW", email: "sam@2110fitness.com", role: "Front desk", access: "POS, check-in", active: false },
 ];
 
 function useToggleGroup(initial: Record<string, boolean>) {

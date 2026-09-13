@@ -64,13 +64,9 @@ export const SESSION_TYPE_SHARE: [string, number][] = [
   ["Blueprint and Baseline", 3],
 ];
 
-export const COACH_SHARE: [string, string, number][] = [
-  ["Cory Martin", "CM", 0.41],
-  ["Jess Tran", "JT", 0.33],
-  ["Andre Reyes", "AR", 0.26],
-];
+export const COACH_SHARE: [string, string, number][] = [["Cory Martin", "CM", 1]];
 
-export const COACH_UTIL: Record<string, number> = { CM: 91, JT: 82, AR: 76 };
+export const COACH_UTIL: Record<string, number> = { CM: 91 };
 
 export const RETENTION: [string, string, "good" | "bad" | "warn" | "text"][] = [
   ["Attendance rate", "93%", "good"],
@@ -81,12 +77,7 @@ export const RETENTION: [string, string, "good" | "bad" | "warn" | "text"][] = [
   ["Repeat rate", "88%", "good"],
 ];
 
-export const FOLLOW_UP: [string, string, "bad" | "warn"][] = [
-  ["Marcus Ellis", "3 cancellations", "bad"],
-  ["Rosa Delgado", "$45 balance due", "bad"],
-  ["Kim Alvarez", "package expires Sep 8", "warn"],
-  ["Amy Cole", "$20 balance due", "warn"],
-];
+export const FOLLOW_UP: [string, string, "bad" | "warn"][] = [];
 
 export const TOP_SELLERS: [string, number, number][] = [
   ["PT 10-pack", 14, 6300],

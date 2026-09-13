@@ -1,6 +1,6 @@
 export type ThemeName = "light" | "dark";
 
-export type CoachId = "CM" | "JT" | "AR";
+export type CoachId = "CM";
 
 export type DayOfWeek = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 
