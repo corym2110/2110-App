@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { COACHES } from "@/data/mock/coaches";
 import { SESSION_TYPES, capacityOf, sessionTypeByName } from "@/data/mock/sessionTypes";
 import { useAvailabilityStore } from "@/stores/availability";
 import { useBookingsStore } from "@/stores/bookings";
 import { occurrencesForDate, type Occurrence } from "@/lib/scheduleEngine";
 import { offReason } from "@/lib/availability";
 import { clock, formatDateLong } from "@/lib/time";
+import type { CoachRow } from "@/server/coaches";
 import type { CoachId, Member, SessionTypeName } from "@/types";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
@@ -23,16 +23,18 @@ export function BookingDialog({
   start,
   onClose,
   members,
+  coaches,
   editing,
 }: {
   iso: string;
   start: number;
   onClose: () => void;
   members: Member[];
+  coaches: CoachRow[];
   editing?: Occurrence;
 }) {
   const [type, setType] = useState<SessionTypeName>(editing?.type ?? "Personal Training");
-  const [coach, setCoach] = useState<CoachId>(editing?.coach ?? "CM");
+  const [coach, setCoach] = useState<CoachId>(editing?.coach ?? coaches[0]?.id ?? "");
   const [time, setTime] = useState(editing?.start ?? start);
   const [client, setClient] = useState(editing?.name ?? "");
   const [recur, setRecur] = useState(false);
@@ -117,7 +119,7 @@ export function BookingDialog({
             <Select
               value={coach}
               onChange={(v) => setCoach(v as CoachId)}
-              options={COACHES.map((c) => ({ value: c.id, label: c.name }))}
+              options={coaches.map((c) => ({ value: c.id, label: c.name }))}
               className="h-10 rounded-lg px-2.5 text-sm"
             />
           </label>
@@ -157,7 +159,7 @@ export function BookingDialog({
 
         {warn && (
           <div className="rounded-lg bg-amber-500/15 px-3 py-2.5 text-[12.5px] text-amber-700 dark:text-amber-300">
-            {coach} isn&apos;t working then: {warn}. You can still book — it&apos;s the coach&apos;s call.
+            {coaches.find((c) => c.id === coach)?.name ?? "This coach"} isn&apos;t working then: {warn}. You can still book — it&apos;s the coach&apos;s call.
           </div>
         )}
         {full && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">This slot is already full ({head} of {cap}).</div>}

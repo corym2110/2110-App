@@ -13,7 +13,7 @@ import { occurrencesForDate } from "@/lib/scheduleEngine";
 import { addDays, clock, formatDateShort, formatDateLong, initialsOf, isoOf, mondayOf, startOfToday } from "@/lib/time";
 import { capacityOf, sessionTypeColor } from "@/data/mock/sessionTypes";
 import { useMembers } from "@/lib/useMembers";
-import { coachName } from "@/data/mock/coaches";
+import { useCoaches } from "@/lib/useCoaches";
 import type { SessionTypeName } from "@/types";
 
 const KINDS: SessionTypeName[] = ["Class", "Group Training"];
@@ -30,6 +30,8 @@ export default function ClassesPage() {
   const setStatus = useAttendanceStore((s) => s.setStatus);
   const { waitlists, addToWaitlist, removeFromWaitlist, promoteFromWaitlist, classAdds, addToClass } = useWaitlistStore();
   const members = useMembers();
+  const coaches = useCoaches();
+  const coachName = (id: string) => coaches.find((c) => c.id === id)?.name ?? id;
 
   const weekStart = useMemo(() => addDays(mondayOf(startOfToday()), offset * 7), [offset]);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);

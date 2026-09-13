@@ -12,7 +12,7 @@ import { useBookingsStore } from "@/stores/bookings";
 import { occurrencesForDate, type Occurrence } from "@/lib/scheduleEngine";
 import { addDays, formatDateShort, formatDateLong, isoOf, mondayOf, startOfToday, MONTHS } from "@/lib/time";
 import { useMembers } from "@/lib/useMembers";
-import { COACHES } from "@/data/mock/coaches";
+import { useCoaches } from "@/lib/useCoaches";
 import { DayColumn } from "@/components/schedule/DayColumn";
 import { MonthGrid } from "@/components/schedule/MonthGrid";
 import { DetailPanel } from "@/components/schedule/DetailPanel";
@@ -21,7 +21,6 @@ import type { CoachId } from "@/types";
 
 type View = "Day" | "Week" | "Month";
 const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const ALL_COACHES: { id: "all" | CoachId; name: string }[] = [{ id: "all", name: "All coaches" }, ...COACHES];
 
 interface DragState {
   key: string;
@@ -45,6 +44,8 @@ function ScheduleInner() {
   const availability = useAvailabilityStore((s) => s.byCoach);
   const { bookings, series, moves, cancellations, move } = useBookingsStore();
   const members = useMembers();
+  const coaches = useCoaches();
+  const allCoaches = useMemo(() => [{ id: "all", name: "All coaches" }, ...coaches], [coaches]);
 
   useHeaderAction(
     <HeaderButton onClick={() => setDraft({ iso: isoOf(addDays(startOfToday(), offset)), start: 540 })}>
@@ -64,7 +65,7 @@ function ScheduleInner() {
 
   const monthAnchor = useMemo(() => new Date(today.getFullYear(), today.getMonth() + offset, 1), [today, offset]);
 
-  const relevantCoachIds: CoachId[] = coachFilter === "all" ? COACHES.map((c) => c.id) : [coachFilter];
+  const relevantCoachIds: CoachId[] = coachFilter === "all" ? coaches.map((c) => c.id) : [coachFilter];
 
   const periodLabel =
     view === "Day"
@@ -101,7 +102,7 @@ function ScheduleInner() {
           <Select
             value={coachFilter}
             onChange={(v) => setCoachFilter(v as "all" | CoachId)}
-            options={ALL_COACHES.map((c) => ({ value: c.id, label: c.name }))}
+            options={allCoaches.map((c) => ({ value: c.id, label: c.name }))}
             className="h-9 rounded-[10px] px-2.5 text-[13px]"
           />
           <div className="flex items-center gap-1">
@@ -192,6 +193,7 @@ function ScheduleInner() {
         <DetailPanel
           occurrence={selected}
           members={members}
+          coaches={coaches}
           onClose={() => setSelected(null)}
           onEdit={(o) => {
             setEditing(o);
@@ -199,12 +201,13 @@ function ScheduleInner() {
           }}
         />
       )}
-      {draft && <BookingDialog iso={draft.iso} start={draft.start} members={members} onClose={() => setDraft(null)} />}
+      {draft && <BookingDialog iso={draft.iso} start={draft.start} members={members} coaches={coaches} onClose={() => setDraft(null)} />}
       {editing && (
         <BookingDialog
           iso={editing.iso}
           start={editing.start}
           members={members}
+          coaches={coaches}
           editing={editing}
           onClose={() => setEditing(null)}
         />

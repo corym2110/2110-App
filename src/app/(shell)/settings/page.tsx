@@ -7,6 +7,9 @@ import { HeaderButton } from "@/components/ui/HeaderButton";
 import { PlusIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
+import { useCoachesWithRefetch } from "@/lib/useCoaches";
+import { AddCoachDialog } from "@/components/settings/AddCoachDialog";
+import { initialsOf } from "@/lib/time";
 import { SESSION_TYPES } from "@/data/mock/sessionTypes";
 
 type Tab = "Facility" | "Staff" | "Services" | "Payments" | "Notifications";
@@ -18,10 +21,6 @@ const TAB_LABELS: Record<Tab, string> = {
   Payments: "Tax, terminals and receipts",
   Notifications: "Member reminders and internal alerts",
 };
-
-const STAFF = [
-  { name: "Cory Martin", initials: "CM", email: "cory@2110fitness.com", role: "Facility Supervisor", access: "Full access", active: true },
-];
 
 function useToggleGroup(initial: Record<string, boolean>) {
   const [flags, setFlags] = useState(initial);
@@ -42,6 +41,8 @@ export default function SettingsPage() {
   const [cardTerminal, setCardTerminal] = useState("Front desk terminal · connected");
   const [reminderTiming, setReminderTiming] = useState("24 hours before");
   const [packageWarning, setPackageWarning] = useState("2 sessions left");
+  const { coaches, refetch: refetchCoaches } = useCoachesWithRefetch();
+  const [addCoachOpen, setAddCoachOpen] = useState(false);
 
   useHeaderAction(<HeaderButton onClick={() => setSaved(true)}>{saved ? "Saved" : "Save changes"}</HeaderButton>);
 
@@ -149,36 +150,40 @@ export default function SettingsPage() {
 
       {tab === "Staff" && (
         <Card className="overflow-hidden py-1.5">
-          <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1fr)_96px] gap-3.5 border-b border-divider px-[22px] py-3 text-[11px] tracking-wider text-muted uppercase">
+          <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_96px] gap-3.5 border-b border-divider px-[22px] py-3 text-[11px] tracking-wider text-muted uppercase">
             <span>Staff</span>
             <span>Role</span>
-            <span>Access</span>
             <span className="text-right">Status</span>
           </div>
-          {STAFF.map((s) => (
-            <div key={s.name} className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1fr)_96px] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
+          {coaches.map((c) => (
+            <div key={c.id} className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_96px] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
               <span className="flex min-w-0 items-center gap-2.5">
-                <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-row text-[11.5px] font-semibold text-muted">{s.initials}</span>
+                <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-row text-[11.5px] font-semibold text-muted">{initialsOf(c.name)}</span>
                 <span className="min-w-0">
-                  <span className="block truncate text-[14.5px] font-medium">{s.name}</span>
-                  <span className="block truncate text-xs text-muted">{s.email}</span>
+                  <span className="block truncate text-[14.5px] font-medium">{c.name}</span>
+                  <span className="block truncate text-xs text-muted">{c.email}</span>
                 </span>
               </span>
-              <span className="min-w-0 truncate text-[13.5px]">{s.role}</span>
-              <span className="min-w-0 truncate text-[13.5px] text-muted">{s.access}</span>
-              <span className={`rounded-md py-0.5 text-right text-[11.5px] ${s.active ? "bg-ok/15 text-ok" : "bg-row text-muted"}`}>
-                {s.active ? "Active" : "Invited"}
+              <span className="min-w-0 truncate text-[13.5px]">{c.role}</span>
+              <span className={`rounded-md py-0.5 text-right text-[11.5px] ${c.active ? "bg-ok/15 text-ok" : "bg-row text-muted"}`}>
+                {c.active ? "Active" : "Inactive"}
               </span>
             </div>
           ))}
+          {coaches.length === 0 && <div className="px-[22px] py-6 text-[13.5px] text-muted">No coaches yet.</div>}
           <div className="px-[22px] py-3.5">
-            <button type="button" className="flex h-9 items-center gap-1.5 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
+            <button
+              type="button"
+              onClick={() => setAddCoachOpen(true)}
+              className="flex h-9 items-center gap-1.5 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row"
+            >
               <PlusIcon size={14} />
-              Invite staff
+              Add coach
             </button>
           </div>
         </Card>
       )}
+      {addCoachOpen && <AddCoachDialog onClose={() => setAddCoachOpen(false)} onAdded={refetchCoaches} />}
 
       {tab === "Services" && (
         <Card className="overflow-hidden py-1.5">

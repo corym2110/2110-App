@@ -5,11 +5,11 @@ import Link from "next/link";
 import type { Occurrence } from "@/lib/scheduleEngine";
 import { useAttendanceStore, slotKey } from "@/stores/attendance";
 import { useWaitlistStore } from "@/stores/waitlists";
-import { coachName } from "@/data/mock/coaches";
 import { capacityOf } from "@/data/mock/sessionTypes";
 import { clock, formatDateLong, initialsOf } from "@/lib/time";
 import { XIcon, PencilIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
+import type { CoachRow } from "@/server/coaches";
 import type { AttendanceStatus, Member } from "@/types";
 
 const STATUS_OPTIONS: AttendanceStatus[] = ["Checked in", "No-show", "Late cancel"];
@@ -38,11 +38,13 @@ function StatusButtons({ attKey }: { attKey: string }) {
 export function DetailPanel({
   occurrence,
   members,
+  coaches,
   onClose,
   onEdit,
 }: {
   occurrence: Occurrence;
   members: Member[];
+  coaches: CoachRow[];
   onClose: () => void;
   onEdit: (occurrence: Occurrence) => void;
 }) {
@@ -58,6 +60,7 @@ export function DetailPanel({
   const full = cap > 0 && head >= cap;
   const waiting = waitlists[occurrence.key] ?? [];
   const member = !isGroup ? members.find((m) => m.name === occurrence.name) : undefined;
+  const coachDisplayName = coaches.find((c) => c.id === occurrence.coach)?.name ?? occurrence.coach;
 
   return (
     <div className="panel-shadow fixed bottom-0 right-0 top-16 z-50 flex w-[352px] max-w-full flex-col overflow-y-auto border-l border-divider bg-surface">
@@ -82,7 +85,7 @@ export function DetailPanel({
       </div>
 
       <div className="flex items-center gap-2.5 px-5 pt-3 text-[13.5px] text-muted">
-        <span className="text-fg">{coachName(occurrence.coach)}</span>
+        <span className="text-fg">{coachDisplayName}</span>
         <span>·</span>
         <span>{occurrence.type}</span>
       </div>
@@ -104,7 +107,7 @@ export function DetailPanel({
           </div>
           {member && (
             <Link
-              href={`/pos?member=${encodeURIComponent(member.name)}&type=${encodeURIComponent(occurrence.type)}&coach=${encodeURIComponent(coachName(occurrence.coach))}`}
+              href={`/pos?member=${encodeURIComponent(member.name)}&type=${encodeURIComponent(occurrence.type)}&coach=${encodeURIComponent(coachDisplayName)}`}
               className="mt-3 flex h-10 items-center justify-center rounded-full border border-divider text-[13.5px] hover:bg-row"
             >
               Go to store

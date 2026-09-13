@@ -16,17 +16,21 @@ interface MemberRow {
   city: string | null;
   province: string | null;
   plan: string;
-  balance: unknown;
   since: string;
   lastSession: string;
   coach: { name: string } | null;
+  sales: { total: unknown }[];
 }
 
 function fullName(row: { firstName: string; lastName: string }): string {
   return `${row.firstName} ${row.lastName}`.trim();
 }
 
+/** Balance due is computed live from unpaid sales — there's no stored balance column to drift out of sync. */
+const UNPAID_SALES_INCLUDE = { where: { paid: false }, select: { total: true } } as const;
+
 function toMember(row: MemberRow): Member {
+  const balance = row.sales.reduce((a, s) => a + Number(s.total), 0);
   return {
     id: row.id,
     name: fullName(row),
@@ -36,7 +40,7 @@ function toMember(row: MemberRow): Member {
     email: row.email,
     phone: row.phone,
     plan: row.plan,
-    balance: Number(row.balance),
+    balance,
     since: row.since,
     lastSession: row.lastSession,
     coach: row.coach?.name ?? "Unassigned",
@@ -48,12 +52,15 @@ function toMember(row: MemberRow): Member {
 }
 
 export async function getMembers(): Promise<Member[]> {
-  const rows = await db.member.findMany({ include: { coach: true }, orderBy: [{ firstName: "asc" }, { lastName: "asc" }] });
+  const rows = await db.member.findMany({
+    include: { coach: true, sales: UNPAID_SALES_INCLUDE },
+    orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+  });
   return rows.map(toMember);
 }
 
 export async function getMemberById(id: string): Promise<Member | null> {
-  const row = await db.member.findUnique({ where: { id }, include: { coach: true } });
+  const row = await db.member.findUnique({ where: { id }, include: { coach: true, sales: UNPAID_SALES_INCLUDE } });
   return row ? toMember(row) : null;
 }
 
@@ -96,7 +103,6 @@ export async function addMember(input: NewMemberInput): Promise<string> {
       city: input.city?.trim() || undefined,
       province: input.province?.trim() || undefined,
       plan: "No plan yet",
-      balance: 0,
       since: `${MONTHS_SHORT[now.getMonth()]} ${now.getFullYear()}`,
       lastSession: "No sessions yet",
       coachId: coach?.id,

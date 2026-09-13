@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
@@ -9,7 +9,9 @@ import { Select } from "@/components/ui/Select";
 import { PlusIcon, PencilIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useMembers } from "@/lib/useMembers";
+import { useCoaches } from "@/lib/useCoaches";
 import { getSharedAccountLinks, type SharedAccountLink } from "@/server/members";
+import { createSale } from "@/server/sales";
 import { CATALOG, matchProduct } from "@/data/mock/catalog";
 import { money } from "@/lib/time";
 import type { Product } from "@/types";
@@ -28,6 +30,7 @@ function POSInner() {
   }, [params]);
 
   const members = useMembers();
+  const coaches = useCoaches();
 
   const [category, setCategory] = useState<Product["category"] | "All">("All");
   const [query, setQuery] = useState("");
@@ -41,7 +44,10 @@ function POSInner() {
   const [discMode, setDiscMode] = useState<"%" | "$">("%");
   const [discValue, setDiscValue] = useState("");
   const [method, setMethod] = useState("Card");
+  const [invoiceUnpaid, setInvoiceUnpaid] = useState(false);
   const [receipt, setReceipt] = useState<string | null>(null);
+  const [saleError, setSaleError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const member = chosenMember ?? members.find((m) => m.name === initialMemberName)?.id ?? "";
   const setMember = (id: string) => setChosenMember(id);
@@ -52,6 +58,7 @@ function POSInner() {
     setLinksMember(member);
     setOnBehalf("");
     setLinked([]);
+    setInvoiceUnpaid(false);
   }
 
   useEffect(() => {
@@ -65,13 +72,17 @@ function POSInner() {
     };
   }, [member]);
 
-  const memberName = member ? (members.find((m) => m.id === member)?.name ?? "Member") : "Walk-in";
+  const selectedMember = member ? members.find((m) => m.id === member) : undefined;
+  const memberName = selectedMember?.name ?? "Walk-in";
+  const memberCoachId = selectedMember ? coaches.find((c) => c.name === selectedMember.coach)?.id : undefined;
 
   useHeaderAction(
     <HeaderButton
       onClick={() => {
         setCart({});
         setReceipt(null);
+        setSaleError(null);
+        setInvoiceUnpaid(false);
       }}
     >
       <PlusIcon size={15} />
@@ -182,9 +193,14 @@ function POSInner() {
             />
           </label>
           {member && (
-            <Link href={`/members/${member}`} className="-mt-1.5 flex items-center gap-1.5 text-[12.5px] text-link hover:text-link-hover">
-              View profile
-            </Link>
+            <div className="-mt-1.5 flex items-center gap-2.5">
+              <Link href={`/members/${member}`} className="text-[12.5px] text-link hover:text-link-hover">
+                View profile
+              </Link>
+              {selectedMember && selectedMember.balance > 0 && (
+                <span className="text-[12.5px] text-bad">{money(selectedMember.balance)} already due</span>
+              )}
+            </div>
           )}
 
           <div className="h-px bg-divider" />
@@ -319,7 +335,7 @@ function POSInner() {
 
           <div>
             <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Payment method</div>
-            <div className="grid grid-cols-2 gap-1.5">
+            <div className={`grid grid-cols-2 gap-1.5 ${invoiceUnpaid ? "pointer-events-none opacity-40" : ""}`}>
               {PAYMENT_METHODS.map((m) => (
                 <button
                   key={m}
@@ -333,13 +349,41 @@ function POSInner() {
             </div>
           </div>
 
+          {member && (
+            <label className="flex items-center gap-2 text-[13px]">
+              <input type="checkbox" checked={invoiceUnpaid} onChange={(e) => setInvoiceUnpaid(e.target.checked)} className="h-4 w-4" />
+              Leave unpaid — invoice {memberName} for this later
+            </label>
+          )}
+
+          {saleError && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">{saleError}</div>}
+
           <button
             type="button"
-            disabled={lines.length === 0 || needsAmount}
-            onClick={() => setReceipt(`${money(total)} charged to ${memberName}`)}
+            disabled={lines.length === 0 || needsAmount || isPending}
+            onClick={() => {
+              setSaleError(null);
+              const summary = lines.map((p) => (cart[p.id] > 1 ? `${p.name} x${cart[p.id]}` : p.name)).join(", ");
+              startTransition(async () => {
+                try {
+                  await createSale({
+                    memberId: member || undefined,
+                    coachId: memberCoachId,
+                    summary,
+                    total,
+                    method: invoiceUnpaid ? "Invoice" : method,
+                    paid: !invoiceUnpaid,
+                  });
+                  setReceipt(invoiceUnpaid ? `${money(total)} added to ${memberName}'s account` : `${money(total)} charged to ${memberName}`);
+                  setCart({});
+                } catch {
+                  setSaleError("Couldn't record that sale. Try again.");
+                }
+              });
+            }}
             className="h-11 rounded-full bg-accent text-[14.5px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {lines.length === 0 ? "Add items to charge" : `Charge ${money(total)}`}
+            {lines.length === 0 ? "Add items to charge" : isPending ? "Charging…" : invoiceUnpaid ? `Add ${money(total)} to account` : `Charge ${money(total)}`}
           </button>
 
           {receipt && (

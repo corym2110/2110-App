@@ -21,7 +21,7 @@ export function MonthGrid({
   onPickDay: (d: Date) => void;
 }) {
   const dark = useThemeStore((s) => s.theme === "dark");
-  const { bookings, series, moves } = useBookingsStore();
+  const { bookings, series, moves, cancellations } = useBookingsStore();
 
   const firstOfMonth = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
   const gridStart = mondayOf(firstOfMonth);
@@ -41,7 +41,7 @@ export function MonthGrid({
         {cells.map((date) => {
           const iso = isoOf(date);
           const inMonth = date.getMonth() === monthAnchor.getMonth();
-          const occ = occurrencesForDate(date, moves, bookings, series).filter((o) => coachFilter === "all" || o.coach === coachFilter);
+          const occ = occurrencesForDate(date, moves, bookings, series, cancellations).filter((o) => coachFilter === "all" || o.coach === coachFilter);
           const chips = occ.slice(0, 3);
           return (
             <button

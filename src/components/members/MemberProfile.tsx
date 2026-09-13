@@ -1,16 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useThemeStore } from "@/stores/theme";
 import { useBookingsStore } from "@/stores/bookings";
 import { useAttendanceStore, slotKey } from "@/stores/attendance";
+import { useCoaches } from "@/lib/useCoaches";
 import { occurrencesForDate } from "@/lib/scheduleEngine";
-import { coachName } from "@/data/mock/coaches";
 import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@/server/members";
+import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
 import { sessionTypeColor, SHORT_LABEL } from "@/data/mock/sessionTypes";
 import { addDays, formatDateShort, initialsOf, money, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
@@ -32,9 +33,16 @@ export function MemberProfile({
   const [addOpen, setAddOpen] = useState(false);
   const [addPick, setAddPick] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [unpaidSales, setUnpaidSales] = useState<UnpaidSale[]>([]);
+  const [isPayingSale, startPaySale] = useTransition();
 
   const { bookings, series, moves, cancellations } = useBookingsStore();
   const statuses = useAttendanceStore((s) => s.statuses);
+  const coaches = useCoaches();
+
+  useEffect(() => {
+    getUnpaidSalesForMember(member.id).then(setUnpaidSales);
+  }, [member.id]);
 
   const history = useMemo(() => {
     const today = startOfToday();
@@ -48,13 +56,13 @@ export function MemberProfile({
           iso: o.iso,
           start: o.start,
           type: o.type,
-          coach: coachName(o.coach),
+          coach: coaches.find((c) => c.id === o.coach)?.name ?? o.coach,
           status: statuses[slotKey(o.iso, o.start, o.coach, member.name)] ?? null,
         });
       }
     }
     return rows.sort((a, b) => (a.iso === b.iso ? b.start - a.start : b.iso < a.iso ? -1 : 1));
-  }, [bookings, series, moves, cancellations, statuses, member.name]);
+  }, [bookings, series, moves, cancellations, statuses, member.name, coaches]);
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -228,6 +236,30 @@ export function MemberProfile({
             <span className="text-muted">Balance</span>
             <span className={member.balance > 0 ? "text-bad" : "text-muted"}>{member.balance > 0 ? `${money(member.balance)} due` : "$0.00"}</span>
           </div>
+          {unpaidSales.length > 0 && (
+            <div className="mt-3 flex flex-col gap-1.5 border-t border-divider pt-3">
+              <div className="text-[11px] tracking-wider text-muted uppercase">Unpaid charges</div>
+              {unpaidSales.map((s) => (
+                <div key={s.id} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[13px]">{s.summary}</span>
+                  <span className="flex-none text-[13px] tabular-nums text-bad">{money(s.total)}</span>
+                  <button
+                    type="button"
+                    disabled={isPayingSale}
+                    onClick={() =>
+                      startPaySale(async () => {
+                        await markSalePaid(s.id, member.id);
+                        getUnpaidSalesForMember(member.id).then(setUnpaidSales);
+                      })
+                    }
+                    className="h-7 flex-none rounded-md border border-divider px-2 text-[11.5px] hover:bg-row disabled:opacity-60"
+                  >
+                    Mark paid
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card className="px-[22px] py-5">
