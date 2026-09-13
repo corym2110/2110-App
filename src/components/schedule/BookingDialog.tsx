@@ -6,11 +6,12 @@ import { useAvailabilityStore } from "@/stores/availability";
 import { useBookingsStore } from "@/stores/bookings";
 import { occurrencesForDate, type Occurrence } from "@/lib/scheduleEngine";
 import { offReason } from "@/lib/availability";
-import { clock, formatDateLong } from "@/lib/time";
+import { addDays, clock, dowIndex, DOW_LABELS, formatDateLong, isoOf } from "@/lib/time";
 import type { CoachRow } from "@/server/coaches";
-import type { CoachId, Member, SessionTypeName } from "@/types";
+import type { CoachId, DayOfWeek, Member, SessionTypeName } from "@/types";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
+import { Combobox } from "@/components/ui/Combobox";
 
 const TIME_OPTIONS: number[] = (() => {
   const out: number[] = [];
@@ -37,13 +38,22 @@ export function BookingDialog({
   const [coach, setCoach] = useState<CoachId>(editing?.coach ?? coaches[0]?.id ?? "");
   const [time, setTime] = useState(editing?.start ?? start);
   const [client, setClient] = useState(editing?.name ?? "");
-  const [recur, setRecur] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   const byCoach = useAvailabilityStore((s) => s.byCoach);
   const { bookings, series, moves, cancellations, addBooking, addSeries, updateBooking, cancelOccurrence } = useBookingsStore();
 
   const date = useMemo(() => new Date(`${iso}T00:00:00`), [iso]);
+
+  const [recur, setRecur] = useState(false);
+  const [recurDays, setRecurDays] = useState<Record<DayOfWeek, boolean>>(() => {
+    const init: Record<DayOfWeek, boolean> = { Mon: false, Tue: false, Wed: false, Thu: false, Fri: false, Sat: false, Sun: false };
+    init[DOW_LABELS[dowIndex(date)]] = true;
+    return init;
+  });
+  const [endMode, setEndMode] = useState<"never" | "weeks">("never");
+  const [endWeeks, setEndWeeks] = useState(12);
+
   const duration = sessionTypeByName(type).duration;
   const warn = offReason(byCoach[coach], date, time, duration);
   const cap = capacityOf(type);
@@ -54,9 +64,12 @@ export function BookingDialog({
   const full = cap > 0 && head >= cap;
 
   const canRecur = !editing && (type === "Personal Training" || type === "Group Training");
+  const selectedDays = DOW_LABELS.filter((d) => recurDays[d]);
+  const recurReady = !recur || selectedDays.length > 0;
 
   function confirm() {
     if (!client.trim() && type !== "Group Training" && type !== "Class") return;
+    if (recur && canRecur && selectedDays.length === 0) return;
 
     if (editing) {
       const isOneOff = bookings.some((b) => b.id === editing.sourceId);
@@ -71,16 +84,16 @@ export function BookingDialog({
     }
 
     if (recur && canRecur) {
-      const dow = date.getDay();
-      const label = (["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const)[dow];
-      const DOW_MAP = { Mon: "Mon", Tue: "Tue", Wed: "Wed", Thu: "Thu", Fri: "Fri", Sat: "Sat", Sun: "Sun" } as const;
+      const days: Partial<Record<DayOfWeek, number>> = {};
+      for (const d of selectedDays) days[d] = time;
       addSeries({
         client: client.trim(),
         type,
         coach,
         duration,
-        days: { [DOW_MAP[label as keyof typeof DOW_MAP]]: time },
+        days,
         fromIso: iso,
+        toIso: endMode === "weeks" ? isoOf(addDays(date, endWeeks * 7)) : undefined,
       });
     } else {
       addBooking({ iso, start: time, duration, type, coach, name: client.trim() });
@@ -136,25 +149,78 @@ export function BookingDialog({
 
         <label className="flex flex-col gap-1.5">
           <span className="text-[11.5px] tracking-wider text-muted uppercase">Client</span>
-          <input
-            list="member-list"
+          <Combobox
             value={client}
-            onChange={(e) => setClient(e.target.value)}
+            onChange={setClient}
+            options={members.map((m) => m.name)}
             placeholder={type === "Group Training" || type === "Class" ? "Optional title" : "Start typing a name…"}
-            className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+            className="h-10 w-full rounded-lg px-2.5 text-sm"
           />
-          <datalist id="member-list">
-            {members.map((m) => (
-              <option key={m.id} value={m.name} />
-            ))}
-          </datalist>
         </label>
 
         {canRecur && (
-          <label className="flex items-center gap-2 text-[13px]">
-            <input type="checkbox" checked={recur} onChange={(e) => setRecur(e.target.checked)} className="h-4 w-4" />
-            Repeat weekly on this day, with no end date
-          </label>
+          <div className="flex flex-col gap-3 rounded-xl border border-divider p-3">
+            <label className="flex items-center gap-2 text-[13px]">
+              <input type="checkbox" checked={recur} onChange={(e) => setRecur(e.target.checked)} className="h-4 w-4" />
+              Repeat this session
+            </label>
+
+            {recur && (
+              <>
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[11.5px] tracking-wider text-muted uppercase">Repeat on</span>
+                  <div className="flex gap-1">
+                    {DOW_LABELS.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setRecurDays((r) => ({ ...r, [d]: !r[d] }))}
+                        className={`h-8 flex-1 rounded-lg border text-[11.5px] ${
+                          recurDays[d] ? "border-accent bg-row font-semibold text-fg" : "border-divider text-muted"
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                  {!recurReady && <div className="text-[12px] text-bad">Pick at least one day.</div>}
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[11.5px] tracking-wider text-muted uppercase">Ends</span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setEndMode("never")}
+                      className={`h-8 flex-none rounded-full border px-3 text-[12.5px] ${endMode === "never" ? "border-accent bg-row font-semibold" : "border-divider text-muted"}`}
+                    >
+                      No end date
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEndMode("weeks")}
+                      className={`h-8 flex-none rounded-full border px-3 text-[12.5px] ${endMode === "weeks" ? "border-accent bg-row font-semibold" : "border-divider text-muted"}`}
+                    >
+                      After
+                    </button>
+                    {endMode === "weeks" && (
+                      <>
+                        <input
+                          type="number"
+                          min={1}
+                          max={104}
+                          value={endWeeks}
+                          onChange={(e) => setEndWeeks(Math.min(104, Math.max(1, Number(e.target.value) || 1)))}
+                          className="h-8 w-14 rounded-md border border-divider bg-transparent px-2 text-[12.5px] tabular-nums"
+                        />
+                        <span className="text-[12.5px] text-muted">weeks</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         {warn && (
@@ -197,7 +263,12 @@ export function BookingDialog({
             <button type="button" onClick={onClose} className="h-10 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
               Close
             </button>
-            <button type="button" onClick={confirm} className="h-10 rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent">
+            <button
+              type="button"
+              onClick={confirm}
+              disabled={!recurReady}
+              className="h-10 rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-45"
+            >
               {editing ? "Save changes" : warn || full ? "Book anyway" : "Book session"}
             </button>
           </div>
