@@ -63,6 +63,25 @@
   color-scheme: dark;
 }
 
+/* Belt-and-suspenders for native form controls: color-scheme alone doesn't
+   reliably dark-theme <select> popups on every browser/OS combination, so
+   also set explicit colors directly on select/option. */
+[data-theme="dark"] select,
+[data-theme="dark"] option {
+  background-color: var(--app-surface);
+  color: var(--app-text);
+}
+
+[data-theme="dark"] select option:checked {
+  background-color: var(--app-accent-deep);
+  color: var(--app-text);
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] textarea {
+  color-scheme: dark;
+}
+
 html,
 body {
   margin: 0;
