@@ -105,7 +105,7 @@ function POSInner() {
               placeholder="Search products"
               className="mb-3 h-9 w-full rounded-lg border border-divider bg-transparent px-3 text-sm"
             />
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] items-start gap-3">
               {visible.map((p) => {
                 const qty = cart[p.id] ?? 0;
                 return (
