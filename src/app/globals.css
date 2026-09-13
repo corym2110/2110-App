@@ -1,0 +1,96 @@
+@import "tailwindcss";
+
+:root {
+  --app-bg: #f4f3ef;
+  --app-surface: #ffffff;
+  --app-text: #1c1e1c;
+  --app-muted: #6d7270;
+  --app-divider: rgba(28, 30, 28, .10);
+  --app-row: rgba(28, 30, 28, .045);
+  --app-accent: #0f6e6b;
+  --app-accent-deep: #0a3f3e;
+  --app-on-accent: #ffffff;
+  --app-ok: #0f6e6b;
+  --app-link: #0f6e6b;
+  --app-link-hover: #0a504e;
+  --app-card-shadow: 0 1px 2px rgba(28, 30, 28, .05), 0 10px 28px rgba(28, 30, 28, .06);
+  --app-popover-shadow: 0 0 0 1px var(--app-divider), 0 18px 44px rgba(0, 0, 0, .22);
+  --app-panel-shadow: -18px 0 40px rgba(0, 0, 0, .16);
+}
+
+[data-theme="dark"] {
+  --app-bg: #161826;
+  --app-surface: #232532;
+  --app-text: #e9e9ed;
+  --app-muted: #9397ab;
+  --app-divider: rgba(233, 233, 237, .14);
+  --app-row: rgba(233, 233, 237, .05);
+  --app-accent: #9184d9;
+  --app-accent-deep: #2b2741;
+  --app-on-accent: #12141f;
+  --app-ok: #7fd6a5;
+  --app-link: #b5abfc;
+  --app-link-hover: #d2cefd;
+  --app-card-shadow: 0 0 0 1px #3f424d, 0 10px 28px rgba(0, 0, 0, .5);
+  --app-popover-shadow: 0 0 0 1px var(--app-divider), 0 18px 44px rgba(0, 0, 0, .35);
+  --app-panel-shadow: -18px 0 40px rgba(0, 0, 0, .4);
+}
+
+@theme inline {
+  --color-bg: var(--app-bg);
+  --color-surface: var(--app-surface);
+  --color-fg: var(--app-text);
+  --color-muted: var(--app-muted);
+  --color-divider: var(--app-divider);
+  --color-row: var(--app-row);
+  --color-accent: var(--app-accent);
+  --color-accent-deep: var(--app-accent-deep);
+  --color-on-accent: var(--app-on-accent);
+  --color-ok: var(--app-ok);
+  --color-link: var(--app-link);
+  --color-link-hover: var(--app-link-hover);
+  --color-bad: #c8452e;
+  --color-sidebar: #12141f;
+  --color-sidebar-fg: #e9e9ed;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+body {
+  font-family: var(--font-inter), system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--app-accent) 30%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+.card-shadow {
+  box-shadow: var(--app-card-shadow);
+}
+
+.popover-shadow {
+  box-shadow: var(--app-popover-shadow);
+}
+
+.panel-shadow {
+  box-shadow: var(--app-panel-shadow);
+}

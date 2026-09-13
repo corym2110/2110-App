@@ -1,0 +1,303 @@
+"use client";
+
+import { useState } from "react";
+import { Card } from "@/components/ui/Card";
+import { Toggle } from "@/components/ui/Toggle";
+import { HeaderButton } from "@/components/ui/HeaderButton";
+import { PlusIcon } from "@/components/ui/icons";
+import { useHeaderAction } from "@/lib/useHeaderAction";
+import { SESSION_TYPES } from "@/data/mock/sessionTypes";
+
+type Tab = "Facility" | "Staff" | "Services" | "Payments" | "Notifications";
+
+const TAB_LABELS: Record<Tab, string> = {
+  Facility: "Business details, hours and booking rules",
+  Staff: "Coaches, roles and access",
+  Services: "Session types, lengths and pricing",
+  Payments: "Tax, terminals and receipts",
+  Notifications: "Member reminders and internal alerts",
+};
+
+const STAFF = [
+  { name: "Cory Martin", initials: "CM", email: "cory@2110fitness.com", role: "Facility Supervisor", access: "Full access", active: true },
+  { name: "Jess Tran", initials: "JT", email: "jess@2110fitness.com", role: "Coach", access: "Schedule, members, POS", active: true },
+  { name: "Andre Reyes", initials: "AR", email: "andre@2110fitness.com", role: "Coach", access: "Schedule, members", active: true },
+  { name: "Sam Whitlow", initials: "SW", email: "sam@2110fitness.com", role: "Front desk", access: "POS, check-in", active: false },
+];
+
+function useToggleGroup(initial: Record<string, boolean>) {
+  const [flags, setFlags] = useState(initial);
+  const toggle = (key: string) => setFlags((f) => ({ ...f, [key]: !f[key] }));
+  return { flags, toggle };
+}
+
+export default function SettingsPage() {
+  const [tab, setTab] = useState<Tab>("Facility");
+  const [saved, setSaved] = useState(false);
+  const booking = useToggleGroup({ selfBook: true, waitlist: true, requireCard: false, allowDouble: false });
+  const payments = useToggleGroup({ emailReceipt: true, autoCharge: true, packageAlert: true, dailySummary: false });
+  const notify = useToggleGroup({ reminder: true, cancelNotice: true, waitlistOpen: true, birthday: false, marketing: false });
+
+  useHeaderAction(<HeaderButton onClick={() => setSaved(true)}>{saved ? "Saved" : "Save changes"}</HeaderButton>);
+
+  return (
+    <div className="flex flex-col gap-[18px]">
+      <div className="flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <h2 className="m-0 mb-0.5 text-[28px] font-medium tracking-tight">Settings</h2>
+          <div className="text-[13.5px] text-muted">{TAB_LABELS[tab]}</div>
+        </div>
+        <div className="ml-auto flex flex-wrap gap-1 rounded-[11px] border border-divider p-1">
+          {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              className={`whitespace-nowrap rounded-lg px-3.5 py-1.5 text-[13px] ${tab === t ? "bg-row font-semibold text-fg" : "text-muted"}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === "Facility" && (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[18px]">
+          <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+            <h5 className="text-[15.5px] font-semibold">Facility</h5>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Business name</span>
+              <input defaultValue="2110 Fitness" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Address</span>
+              <input defaultValue="5824 Burbank Rd SE, Calgary, AB" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">Phone</span>
+                <input defaultValue="+1 403 555 2110" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">Time zone</span>
+                <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
+                  <option>Mountain (MDT)</option>
+                  <option>Pacific (PDT)</option>
+                  <option>Central (CDT)</option>
+                  <option>Eastern (EDT)</option>
+                </select>
+              </label>
+            </div>
+          </Card>
+
+          <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+            <h5 className="text-[15.5px] font-semibold">Hours &amp; calendar</h5>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">Opens</span>
+                <input defaultValue="6:00 AM" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">Closes</span>
+                <input defaultValue="8:00 PM" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              </label>
+            </div>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Booking increment</span>
+              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
+                <option>5 minutes</option>
+                <option>10 minutes</option>
+                <option>15 minutes</option>
+                <option>30 minutes</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Default calendar view</span>
+              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
+                <option>Week</option>
+                <option>Day</option>
+                <option>Month</option>
+              </select>
+            </label>
+          </Card>
+
+          <Card className="px-[22px] py-5">
+            <h5 className="mb-1 text-[15.5px] font-semibold">Booking rules</h5>
+            {[
+              { key: "selfBook", label: "Members can self-book", hint: "Booking opens 14 days ahead in the member app" },
+              { key: "waitlist", label: "Waitlists on full sessions", hint: "Members are promoted automatically when a spot frees up" },
+              { key: "requireCard", label: "Require card on file", hint: "Members must save a card before booking" },
+              { key: "allowDouble", label: "Allow double-booked slots", hint: "Lets two sessions share the same time in one coach's column" },
+            ].map((t) => (
+              <div key={t.key} className="flex items-center gap-3.5 border-b border-divider py-3 last:border-b-0">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px]">{t.label}</div>
+                  <div className="text-pretty text-xs text-muted">{t.hint}</div>
+                </div>
+                <Toggle on={booking.flags[t.key]} onClick={() => booking.toggle(t.key)} label={t.label} />
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+
+      {tab === "Staff" && (
+        <Card className="overflow-hidden py-1.5">
+          <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1fr)_96px] gap-3.5 border-b border-divider px-[22px] py-3 text-[11px] tracking-wider text-muted uppercase">
+            <span>Staff</span>
+            <span>Role</span>
+            <span>Access</span>
+            <span className="text-right">Status</span>
+          </div>
+          {STAFF.map((s) => (
+            <div key={s.name} className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_minmax(0,1fr)_96px] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-row text-[11.5px] font-semibold text-muted">{s.initials}</span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[14.5px] font-medium">{s.name}</span>
+                  <span className="block truncate text-xs text-muted">{s.email}</span>
+                </span>
+              </span>
+              <span className="min-w-0 truncate text-[13.5px]">{s.role}</span>
+              <span className="min-w-0 truncate text-[13.5px] text-muted">{s.access}</span>
+              <span className={`rounded-md py-0.5 text-right text-[11.5px] ${s.active ? "bg-ok/15 text-ok" : "bg-row text-muted"}`}>
+                {s.active ? "Active" : "Invited"}
+              </span>
+            </div>
+          ))}
+          <div className="px-[22px] py-3.5">
+            <button type="button" className="flex h-9 items-center gap-1.5 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
+              <PlusIcon size={14} />
+              Invite staff
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {tab === "Services" && (
+        <Card className="overflow-hidden py-1.5">
+          <div className="grid grid-cols-[minmax(0,1.5fr)_108px_116px_minmax(0,1fr)] gap-3.5 border-b border-divider px-[22px] py-3 text-[11px] tracking-wider text-muted uppercase">
+            <span>Session type</span>
+            <span className="text-right">Default length</span>
+            <span className="text-right">Price</span>
+            <span>Capacity</span>
+          </div>
+          {SESSION_TYPES.map((t) => (
+            <div key={t.name} className="grid grid-cols-[minmax(0,1.5fr)_108px_116px_minmax(0,1fr)] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span className="h-2.5 w-2.5 flex-none rounded-[3px] bg-accent" />
+                <span className="min-w-0 truncate text-sm">{t.name}</span>
+              </span>
+              <span className="text-right text-[13.5px] tabular-nums">{t.duration} min</span>
+              <span className="text-right text-[13.5px] font-medium tabular-nums">{t.price ? `$${t.price.toFixed(2)}` : "No charge"}</span>
+              <span className="text-[13.5px] text-muted">{t.capacity ? `Up to ${t.capacity}` : "1 client"}</span>
+            </div>
+          ))}
+          <div className="px-[22px] py-3.5">
+            <button type="button" className="flex h-9 items-center gap-1.5 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
+              <PlusIcon size={14} />
+              Add session type
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {tab === "Payments" && (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[18px]">
+          <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+            <h5 className="text-[15.5px] font-semibold">Payments</h5>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">Currency</span>
+                <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
+                  <option>CAD</option>
+                  <option>USD</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">Sales tax</span>
+                <input defaultValue="GST 5%" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              </label>
+            </div>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Card terminal</span>
+              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
+                <option>Front desk terminal · connected</option>
+                <option>Mobile reader · connected</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Late cancellation fee</span>
+              <input defaultValue="$25.00" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+            </label>
+          </Card>
+
+          <Card className="px-[22px] py-5">
+            <h5 className="mb-1 text-[15.5px] font-semibold">Receipts &amp; billing</h5>
+            {[
+              { key: "emailReceipt", label: "Email receipts", hint: "Sent to the member as soon as a sale is charged" },
+              { key: "autoCharge", label: "Auto-charge memberships", hint: "Recurring plans bill on their renewal date" },
+              { key: "packageAlert", label: "Flag unpaid sessions", hint: "Shows a balance-due badge on the session panel" },
+              { key: "dailySummary", label: "Print end-of-day till report", hint: "Prints automatically when the till is closed" },
+            ].map((t) => (
+              <div key={t.key} className="flex items-center gap-3.5 border-b border-divider py-3 last:border-b-0">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px]">{t.label}</div>
+                  <div className="text-pretty text-xs text-muted">{t.hint}</div>
+                </div>
+                <Toggle on={payments.flags[t.key]} onClick={() => payments.toggle(t.key)} label={t.label} />
+              </div>
+            ))}
+          </Card>
+        </div>
+      )}
+
+      {tab === "Notifications" && (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[18px]">
+          <Card className="px-[22px] py-5">
+            <h5 className="mb-1 text-[15.5px] font-semibold">Member notifications</h5>
+            {[
+              { key: "reminder", label: "Session reminders", hint: "Text and email before each booked session" },
+              { key: "cancelNotice", label: "Cancellation confirmations", hint: "Confirms cancellations and refund method" },
+              { key: "waitlistOpen", label: "Waitlist openings", hint: "Notifies the next member when a spot opens" },
+              { key: "birthday", label: "Birthday messages", hint: "Sends a note on the member's birthday" },
+              { key: "marketing", label: "Promotions and campaigns", hint: "Marketing email to members who opted in" },
+            ].map((t) => (
+              <div key={t.key} className="flex items-center gap-3.5 border-b border-divider py-3 last:border-b-0">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px]">{t.label}</div>
+                  <div className="text-pretty text-xs text-muted">{t.hint}</div>
+                </div>
+                <Toggle on={notify.flags[t.key]} onClick={() => notify.toggle(t.key)} label={t.label} />
+              </div>
+            ))}
+          </Card>
+
+          <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+            <h5 className="text-[15.5px] font-semibold">Reminder timing</h5>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Session reminder</span>
+              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
+                <option>24 hours before</option>
+                <option>12 hours before</option>
+                <option>2 hours before</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Package low warning</span>
+              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
+                <option>2 sessions left</option>
+                <option>3 sessions left</option>
+                <option>5 sessions left</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Daily summary to</span>
+              <input defaultValue="cory@2110fitness.com" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+            </label>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
