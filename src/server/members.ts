@@ -4,10 +4,35 @@ import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import type { Member } from "@/types";
 
-function toMember(row: { id: string; name: string; email: string; phone: string; plan: string; balance: unknown; since: string; lastSession: string; coach: { name: string } | null }): Member {
+interface MemberRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  gender: string;
+  address: string | null;
+  postalCode: string | null;
+  city: string | null;
+  province: string | null;
+  plan: string;
+  balance: unknown;
+  since: string;
+  lastSession: string;
+  coach: { name: string } | null;
+}
+
+function fullName(row: { firstName: string; lastName: string }): string {
+  return `${row.firstName} ${row.lastName}`.trim();
+}
+
+function toMember(row: MemberRow): Member {
   return {
     id: row.id,
-    name: row.name,
+    name: fullName(row),
+    firstName: row.firstName,
+    lastName: row.lastName,
+    gender: row.gender,
     email: row.email,
     phone: row.phone,
     plan: row.plan,
@@ -15,11 +40,15 @@ function toMember(row: { id: string; name: string; email: string; phone: string;
     since: row.since,
     lastSession: row.lastSession,
     coach: row.coach?.name ?? "Unassigned",
+    address: row.address ?? undefined,
+    postalCode: row.postalCode ?? undefined,
+    city: row.city ?? undefined,
+    province: row.province ?? undefined,
   };
 }
 
 export async function getMembers(): Promise<Member[]> {
-  const rows = await db.member.findMany({ include: { coach: true }, orderBy: { name: "asc" } });
+  const rows = await db.member.findMany({ include: { coach: true }, orderBy: [{ firstName: "asc" }, { lastName: "asc" }] });
   return rows.map(toMember);
 }
 
@@ -31,26 +60,42 @@ export async function getMemberById(id: string): Promise<Member | null> {
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export interface NewMemberInput {
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   phone: string;
-  plan: string;
+  gender: string;
+  address?: string;
+  postalCode?: string;
+  city?: string;
+  province?: string;
 }
 
 export async function addMember(input: NewMemberInput): Promise<string> {
-  const name = input.name.trim();
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
   const email = input.email.trim();
-  if (!name || !email) throw new Error("Name and email are required.");
+  const phone = input.phone.trim();
+  const gender = input.gender.trim();
+  if (!firstName || !lastName || !email || !phone || !gender) {
+    throw new Error("First name, last name, email, phone, and gender are required.");
+  }
 
   const coach = await db.coach.findFirst({ where: { active: true }, orderBy: { name: "asc" } });
   const now = new Date();
 
   const row = await db.member.create({
     data: {
-      name,
+      firstName,
+      lastName,
       email,
-      phone: input.phone.trim(),
-      plan: input.plan,
+      phone,
+      gender,
+      address: input.address?.trim() || undefined,
+      postalCode: input.postalCode?.trim() || undefined,
+      city: input.city?.trim() || undefined,
+      province: input.province?.trim() || undefined,
+      plan: "No plan yet",
       balance: 0,
       since: `${MONTHS_SHORT[now.getMonth()]} ${now.getFullYear()}`,
       lastSession: "No sessions yet",
@@ -62,11 +107,16 @@ export async function addMember(input: NewMemberInput): Promise<string> {
   return row.id;
 }
 
+export interface SharedAccountLink {
+  id: string;
+  name: string;
+}
+
 export interface SharedAccountLinks {
   /** Members this person is approved to purchase for. */
-  paysFor: string[];
+  paysFor: SharedAccountLink[];
   /** Members whose account pays for this person. */
-  paidBy: string[];
+  paidBy: SharedAccountLink[];
 }
 
 export async function getSharedAccountLinks(memberId: string): Promise<SharedAccountLinks> {
@@ -75,25 +125,21 @@ export async function getSharedAccountLinks(memberId: string): Promise<SharedAcc
     db.sharedAccount.findMany({ where: { beneficiaryId: memberId }, include: { payer: true } }),
   ]);
   return {
-    paysFor: asPayer.map((r) => r.beneficiary.name),
-    paidBy: asBeneficiary.map((r) => r.payer.name),
+    paysFor: asPayer.map((r) => ({ id: r.beneficiary.id, name: fullName(r.beneficiary) })),
+    paidBy: asBeneficiary.map((r) => ({ id: r.payer.id, name: fullName(r.payer) })),
   };
 }
 
-export async function addSharedAccount(payerId: string, beneficiaryName: string): Promise<void> {
-  const beneficiary = await db.member.findFirst({ where: { name: beneficiaryName } });
-  if (!beneficiary) return;
+export async function addSharedAccount(payerId: string, beneficiaryId: string): Promise<void> {
   await db.sharedAccount.upsert({
-    where: { payerId_beneficiaryId: { payerId, beneficiaryId: beneficiary.id } },
-    create: { payerId, beneficiaryId: beneficiary.id },
+    where: { payerId_beneficiaryId: { payerId, beneficiaryId } },
+    create: { payerId, beneficiaryId },
     update: {},
   });
   revalidatePath(`/members/${payerId}`);
 }
 
-export async function removeSharedAccount(payerId: string, beneficiaryName: string): Promise<void> {
-  const beneficiary = await db.member.findFirst({ where: { name: beneficiaryName } });
-  if (!beneficiary) return;
-  await db.sharedAccount.deleteMany({ where: { payerId, beneficiaryId: beneficiary.id } });
+export async function removeSharedAccount(payerId: string, beneficiaryId: string): Promise<void> {
+  await db.sharedAccount.deleteMany({ where: { payerId, beneficiaryId } });
   revalidatePath(`/members/${payerId}`);
 }

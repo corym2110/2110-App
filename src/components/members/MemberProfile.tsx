@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useThemeStore } from "@/stores/theme";
-import { addSharedAccount, removeSharedAccount } from "@/server/members";
+import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@/server/members";
 import { sessionTypeColor, SHORT_LABEL } from "@/data/mock/sessionTypes";
 import { initialsOf, money } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
@@ -23,12 +23,12 @@ function primaryTypeOf(plan: string): SessionTypeName {
 export function MemberProfile({
   member,
   paysFor,
-  payerNames,
+  paidBy,
   candidates,
 }: {
   member: Member;
-  paysFor: string[];
-  payerNames: string[];
+  paysFor: SharedAccountLink[];
+  paidBy: SharedAccountLink[];
   candidates: { id: string; name: string }[];
 }) {
   const dark = useThemeStore((s) => s.theme === "dark");
@@ -103,7 +103,7 @@ export function MemberProfile({
                 value={addPick}
                 onChange={setAddPick}
                 placeholder="Choose a member…"
-                options={candidates.filter((c) => !paysFor.includes(c.name)).map((c) => ({ value: c.name, label: c.name }))}
+                options={candidates.filter((c) => !paysFor.some((p) => p.id === c.id)).map((c) => ({ value: c.id, label: c.name }))}
                 className="h-[34px] min-w-0 flex-1 rounded-lg px-2.5 text-[13px]"
               />
               <button
@@ -128,21 +128,21 @@ export function MemberProfile({
             <>
               <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Can purchase for</div>
               <div className="mb-3.5 flex flex-col gap-1">
-                {paysFor.map((n) => (
-                  <div key={n} className="-mx-2 flex items-center gap-1">
+                {paysFor.map((p) => (
+                  <div key={p.id} className="-mx-2 flex items-center gap-1">
                     <Link
-                      href={`/members/${candidates.find((c) => c.name === n)?.id ?? ""}`}
+                      href={`/members/${p.id}`}
                       className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13.5px] text-fg hover:bg-row"
                     >
                       <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-row text-[10px] font-semibold text-muted">
-                        {initialsOf(n)}
+                        {initialsOf(p.name)}
                       </span>
-                      <span className="min-w-0 truncate">{n}</span>
+                      <span className="min-w-0 truncate">{p.name}</span>
                     </Link>
                     <button
                       type="button"
                       disabled={isPending}
-                      onClick={() => startTransition(async () => { await removeSharedAccount(member.id, n); })}
+                      onClick={() => startTransition(async () => { await removeSharedAccount(member.id, p.id); })}
                       title="Remove link"
                       className="grid h-[26px] w-[26px] flex-none place-items-center rounded-md text-muted hover:bg-row hover:text-fg"
                     >
@@ -153,26 +153,26 @@ export function MemberProfile({
               </div>
             </>
           )}
-          {payerNames.length > 0 && (
+          {paidBy.length > 0 && (
             <>
               <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Sessions paid by</div>
               <div className="flex flex-col gap-1">
-                {payerNames.map((n) => (
+                {paidBy.map((p) => (
                   <Link
-                    key={n}
-                    href={`/members/${candidates.find((c) => c.name === n)?.id ?? ""}`}
+                    key={p.id}
+                    href={`/members/${p.id}`}
                     className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13.5px] text-fg hover:bg-row"
                   >
                     <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-row text-[10px] font-semibold text-muted">
-                      {initialsOf(n)}
+                      {initialsOf(p.name)}
                     </span>
-                    <span className="min-w-0 truncate">{n}</span>
+                    <span className="min-w-0 truncate">{p.name}</span>
                   </Link>
                 ))}
               </div>
             </>
           )}
-          {paysFor.length === 0 && payerNames.length === 0 && (
+          {paysFor.length === 0 && paidBy.length === 0 && (
             <div className="text-[13px] text-pretty text-muted">No linked accounts. Add one to let someone else pay for this member&apos;s sessions.</div>
           )}
         </Card>
@@ -184,6 +184,20 @@ export function MemberProfile({
             <span className="tabular-nums">{member.phone}</span>
             <span className="text-muted">Email</span>
             <span className="min-w-0 truncate">{member.email}</span>
+            {member.gender && (
+              <>
+                <span className="text-muted">Gender</span>
+                <span>{member.gender}</span>
+              </>
+            )}
+            {(member.address || member.city || member.province || member.postalCode) && (
+              <>
+                <span className="text-muted">Address</span>
+                <span className="min-w-0 text-pretty">
+                  {[member.address, member.city, member.province, member.postalCode].filter(Boolean).join(", ")}
+                </span>
+              </>
+            )}
             <span className="text-muted">Emergency</span>
             <span>On file</span>
             <span className="text-muted">Waiver</span>

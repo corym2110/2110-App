@@ -6,33 +6,35 @@ import { addMember } from "@/server/members";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 
-const PLAN_OPTIONS = [
-  "PT 10-pack",
-  "PT 20-pack",
-  "Group 8-pack",
-  "Class membership",
-  "Remote coaching",
-  "Assessment only",
-  "B&B pending",
-];
+const GENDER_OPTIONS = ["Male", "Female", "Prefer not to say"];
 
 export function AddMemberDialog({ onClose }: { onClose: () => void }) {
   const router = useRouter();
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [plan, setPlan] = useState(PLAN_OPTIONS[0]);
+  const [gender, setGender] = useState("");
+  const [address, setAddress] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [city, setCity] = useState("");
+  const [province, setProvince] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const canSave = name.trim().length > 0 && email.trim().length > 0;
+  const canSave =
+    firstName.trim().length > 0 &&
+    lastName.trim().length > 0 &&
+    email.trim().length > 0 &&
+    phone.trim().length > 0 &&
+    gender.length > 0;
 
   function save() {
     if (!canSave || isPending) return;
     setError(null);
     startTransition(async () => {
       try {
-        const id = await addMember({ name, email, phone, plan });
+        const id = await addMember({ firstName, lastName, email, phone, gender, address, postalCode, city, province });
         onClose();
         router.push(`/members/${id}`);
       } catch {
@@ -43,7 +45,7 @@ export function AddMemberDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[70] grid place-items-center bg-black/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="popover-shadow flex w-full max-w-[420px] flex-col gap-3.5 rounded-2xl bg-surface p-5">
+      <div className="popover-shadow flex max-h-[90vh] w-full max-w-[440px] flex-col gap-3.5 overflow-y-auto rounded-2xl bg-surface p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="text-lg font-medium tracking-tight">Add member</div>
           <button type="button" onClick={onClose} className="grid h-8 w-8 flex-none place-items-center rounded-lg text-muted hover:bg-row hover:text-fg">
@@ -51,16 +53,27 @@ export function AddMemberDialog({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11.5px] tracking-wider text-muted uppercase">Name</span>
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Full name"
-            className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
-          />
-        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] tracking-wider text-muted uppercase">First name</span>
+            <input
+              autoFocus
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              placeholder="First name"
+              className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] tracking-wider text-muted uppercase">Last name</span>
+            <input
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              placeholder="Last name"
+              className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+            />
+          </label>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1.5">
@@ -74,7 +87,7 @@ export function AddMemberDialog({ onClose }: { onClose: () => void }) {
             />
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className="text-[11.5px] tracking-wider text-muted uppercase">Phone</span>
+            <span className="text-[11.5px] tracking-wider text-muted uppercase">Phone number</span>
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -85,14 +98,59 @@ export function AddMemberDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         <label className="flex flex-col gap-1.5">
-          <span className="text-[11.5px] tracking-wider text-muted uppercase">Plan</span>
+          <span className="text-[11.5px] tracking-wider text-muted uppercase">Gender</span>
           <Select
-            value={plan}
-            onChange={setPlan}
-            options={PLAN_OPTIONS.map((p) => ({ value: p, label: p }))}
+            value={gender}
+            onChange={setGender}
+            placeholder="Select…"
+            options={GENDER_OPTIONS.map((g) => ({ value: g, label: g }))}
             className="h-10 rounded-lg px-2.5 text-sm"
           />
         </label>
+
+        <div className="mt-1 border-t border-divider pt-3.5">
+          <div className="mb-3 text-[11.5px] tracking-wider text-muted uppercase">Address (optional)</div>
+          <div className="flex flex-col gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Address</span>
+              <input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="Street address"
+                className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">City</span>
+                <input
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="Calgary"
+                  className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">Province</span>
+                <input
+                  value={province}
+                  onChange={(e) => setProvince(e.target.value)}
+                  placeholder="AB"
+                  className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+                />
+              </label>
+            </div>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Postal code</span>
+              <input
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                placeholder="T2H 1B4"
+                className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+              />
+            </label>
+          </div>
+        </div>
 
         {error && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">{error}</div>}
 

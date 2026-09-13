@@ -17,10 +17,16 @@ model Coach {
 
 model Member {
   id            String          @id @default(cuid())
-  name          String
+  firstName     String
+  lastName      String
   email         String          @unique
   phone         String
-  plan          String
+  gender        String
+  address       String?
+  postalCode    String?
+  city          String?
+  province      String?
+  plan          String          @default("No plan yet")
   balance       Decimal         @default(0) @db.Decimal(10, 2)
   since         String
   lastSession   String

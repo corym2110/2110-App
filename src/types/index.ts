@@ -50,6 +50,9 @@ export interface CoachAvailability {
 export interface Member {
   id: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
+  gender?: string;
   plan: string;
   coach: string; // coach full name
   lastSession: string;
@@ -57,6 +60,10 @@ export interface Member {
   since: string;
   phone: string;
   email: string;
+  address?: string;
+  postalCode?: string;
+  city?: string;
+  province?: string;
 }
 
 /** Recurring weekly template row, as booked into the schedule. */

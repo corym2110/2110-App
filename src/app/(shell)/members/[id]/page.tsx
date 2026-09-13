@@ -12,5 +12,5 @@ export default async function MemberProfilePage({ params }: { params: Promise<{ 
   const [links, allMembers] = await Promise.all([getSharedAccountLinks(id), getMembers()]);
   const candidates = allMembers.filter((m) => m.id !== id).map((m) => ({ id: m.id, name: m.name }));
 
-  return <MemberProfile member={member} paysFor={links.paysFor} payerNames={links.paidBy} candidates={candidates} />;
+  return <MemberProfile member={member} paysFor={links.paysFor} paidBy={links.paidBy} candidates={candidates} />;
 }

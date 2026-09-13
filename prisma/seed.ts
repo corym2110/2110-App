@@ -18,13 +18,17 @@ async function main() {
   const coachIdByName = new Map(COACHES.map((c) => [c.name, c.id]));
 
   for (const member of MEMBERS) {
+    const [firstName, ...rest] = member.name.split(" ");
+    const lastName = rest.join(" ") || "-";
     await db.member.upsert({
       where: { id: member.id },
       create: {
         id: member.id,
-        name: member.name,
+        firstName,
+        lastName,
         email: member.email,
         phone: member.phone,
+        gender: "Prefer not to say",
         plan: member.plan,
         balance: member.balance,
         since: member.since,
@@ -32,7 +36,8 @@ async function main() {
         coachId: coachIdByName.get(member.coach),
       },
       update: {
-        name: member.name,
+        firstName,
+        lastName,
         email: member.email,
         phone: member.phone,
         plan: member.plan,
