@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { XIcon } from "@/components/ui/icons";
+import { Select } from "@/components/ui/Select";
 import { useBookingsStore } from "@/stores/bookings";
 import { useAttendanceStore } from "@/stores/attendance";
 import { useWaitlistStore } from "@/stores/waitlists";
@@ -204,18 +205,15 @@ export default function ClassesPage() {
             </div>
 
             <div className="mt-3.5 flex gap-1.5">
-              <select
+              <Select
                 value={addPick}
-                onChange={(e) => setAddPick(e.target.value)}
-                className="h-9 min-w-0 flex-1 rounded-[9px] border border-divider bg-transparent px-2 text-[13.5px]"
-              >
-                <option value="">Add a member…</option>
-                {MEMBERS.filter((m) => !(selected!.roster ?? []).includes(m.name) && !(classAdds[selected!.key] ?? []).includes(m.name)).map((m) => (
-                  <option key={m.id} value={m.name}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setAddPick}
+                placeholder="Add a member…"
+                options={MEMBERS.filter(
+                  (m) => !(selected!.roster ?? []).includes(m.name) && !(classAdds[selected!.key] ?? []).includes(m.name),
+                ).map((m) => ({ value: m.name, label: m.name }))}
+                className="h-9 min-w-0 flex-1 rounded-[9px] px-2 text-[13.5px]"
+              />
               <button
                 type="button"
                 onClick={() => {

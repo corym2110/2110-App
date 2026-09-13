@@ -5,6 +5,7 @@ import { HeaderButton } from "@/components/ui/HeaderButton";
 import { Card } from "@/components/ui/Card";
 import { Toggle } from "@/components/ui/Toggle";
 import { XIcon } from "@/components/ui/icons";
+import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useThemeStore } from "@/stores/theme";
 import { useAvailabilityStore } from "@/stores/availability";
@@ -104,39 +105,29 @@ export default function CoachPreferencesPage() {
                     >
                       {d}
                     </button>
-                    <select
+                    <Select
                       value={clock(h.start)}
                       disabled={!h.on}
-                      onChange={(e) => {
-                        const v = parseClock(e.target.value);
-                        setDayHours("CM", d, { start: v, end: Math.max(v + 60, h.end) });
+                      onChange={(v) => {
+                        const mins = parseClock(v);
+                        setDayHours("CM", d, { start: mins, end: Math.max(mins + 60, h.end) });
                       }}
-                      className="h-[34px] min-w-0 rounded-lg border border-divider bg-transparent px-1.5 text-[13px] disabled:opacity-45"
-                    >
-                      {TIME_OPTIONS.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
+                      options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
+                      className="h-[34px] min-w-0 rounded-lg px-1.5 text-[13px]"
+                    />
                     <span className="text-center text-xs text-muted" style={{ opacity: h.on ? 1 : 0.45 }}>
                       –
                     </span>
-                    <select
+                    <Select
                       value={clock(h.end)}
                       disabled={!h.on}
-                      onChange={(e) => {
-                        const v = parseClock(e.target.value);
-                        setDayHours("CM", d, { end: v, start: Math.min(h.start, v - 60) });
+                      onChange={(v) => {
+                        const mins = parseClock(v);
+                        setDayHours("CM", d, { end: mins, start: Math.min(h.start, mins - 60) });
                       }}
-                      className="h-[34px] min-w-0 rounded-lg border border-divider bg-transparent px-1.5 text-[13px] disabled:opacity-45"
-                    >
-                      {TIME_OPTIONS.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
+                      options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
+                      className="h-[34px] min-w-0 rounded-lg px-1.5 text-[13px]"
+                    />
                     <span className="text-right text-[11.5px] tabular-nums text-muted" style={{ opacity: h.on ? 1 : 0.45 }}>
                       {h.on ? (Number.isInteger(span) ? `${span}h` : `${span.toFixed(1)}h`) : "Off"}
                     </span>
@@ -207,14 +198,15 @@ export default function CoachPreferencesPage() {
               </label>
               <label className="flex min-w-0 flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Type</span>
-                <select
+                <Select
                   value={offType}
-                  onChange={(e) => setOffType(e.target.value as TimeOffEntry["type"])}
-                  className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm"
-                >
-                  <option value="Full days">Full days</option>
-                  <option value="Partial day">Partial day</option>
-                </select>
+                  onChange={(v) => setOffType(v as TimeOffEntry["type"])}
+                  options={[
+                    { value: "Full days", label: "Full days" },
+                    { value: "Partial day", label: "Partial day" },
+                  ]}
+                  className="h-[38px] rounded-lg px-2 text-sm"
+                />
               </label>
             </div>
             <button
@@ -296,21 +288,21 @@ export default function CoachPreferencesPage() {
           </div>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11.5px] tracking-wider text-muted uppercase">Landing screen</span>
-            <select value={landing} onChange={(e) => setLanding(e.target.value)} className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-              {["Dashboard", "Schedule", "Members", "POS", "Reports"].map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={landing}
+              onChange={setLanding}
+              options={["Dashboard", "Schedule", "Members", "POS", "Reports"].map((v) => ({ value: v, label: v }))}
+              className="h-[38px] rounded-lg px-2 text-sm"
+            />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11.5px] tracking-wider text-muted uppercase">Default calendar view</span>
-            <select value={calView} onChange={(e) => setCalView(e.target.value)} className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-              <option>Day</option>
-              <option>Week</option>
-              <option>Month</option>
-            </select>
+            <Select
+              value={calView}
+              onChange={setCalView}
+              options={["Day", "Week", "Month"].map((v) => ({ value: v, label: v }))}
+              className="h-[38px] rounded-lg px-2 text-sm"
+            />
           </label>
         </Card>
       </div>

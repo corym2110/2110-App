@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { Toggle } from "@/components/ui/Toggle";
 import { HeaderButton } from "@/components/ui/HeaderButton";
 import { PlusIcon } from "@/components/ui/icons";
+import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { SESSION_TYPES } from "@/data/mock/sessionTypes";
 
@@ -37,6 +38,13 @@ export default function SettingsPage() {
   const booking = useToggleGroup({ selfBook: true, waitlist: true, requireCard: false, allowDouble: false });
   const payments = useToggleGroup({ emailReceipt: true, autoCharge: true, packageAlert: true, dailySummary: false });
   const notify = useToggleGroup({ reminder: true, cancelNotice: true, waitlistOpen: true, birthday: false, marketing: false });
+  const [timezone, setTimezone] = useState("Mountain (MDT)");
+  const [bookingIncrement, setBookingIncrement] = useState("15 minutes");
+  const [calendarView, setCalendarView] = useState("Week");
+  const [currency, setCurrency] = useState("CAD");
+  const [cardTerminal, setCardTerminal] = useState("Front desk terminal · connected");
+  const [reminderTiming, setReminderTiming] = useState("24 hours before");
+  const [packageWarning, setPackageWarning] = useState("2 sessions left");
 
   useHeaderAction(<HeaderButton onClick={() => setSaved(true)}>{saved ? "Saved" : "Save changes"}</HeaderButton>);
 
@@ -80,12 +88,12 @@ export default function SettingsPage() {
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Time zone</span>
-                <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-                  <option>Mountain (MDT)</option>
-                  <option>Pacific (PDT)</option>
-                  <option>Central (CDT)</option>
-                  <option>Eastern (EDT)</option>
-                </select>
+                <Select
+                  value={timezone}
+                  onChange={setTimezone}
+                  options={["Mountain (MDT)", "Pacific (PDT)", "Central (CDT)", "Eastern (EDT)"].map((v) => ({ value: v, label: v }))}
+                  className="h-[38px] rounded-lg px-2 text-sm"
+                />
               </label>
             </div>
           </Card>
@@ -104,20 +112,21 @@ export default function SettingsPage() {
             </div>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Booking increment</span>
-              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-                <option>5 minutes</option>
-                <option>10 minutes</option>
-                <option>15 minutes</option>
-                <option>30 minutes</option>
-              </select>
+              <Select
+                value={bookingIncrement}
+                onChange={setBookingIncrement}
+                options={["5 minutes", "10 minutes", "15 minutes", "30 minutes"].map((v) => ({ value: v, label: v }))}
+                className="h-[38px] rounded-lg px-2 text-sm"
+              />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Default calendar view</span>
-              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-                <option>Week</option>
-                <option>Day</option>
-                <option>Month</option>
-              </select>
+              <Select
+                value={calendarView}
+                onChange={setCalendarView}
+                options={["Week", "Day", "Month"].map((v) => ({ value: v, label: v }))}
+                className="h-[38px] rounded-lg px-2 text-sm"
+              />
             </label>
           </Card>
 
@@ -209,10 +218,12 @@ export default function SettingsPage() {
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Currency</span>
-                <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-                  <option>CAD</option>
-                  <option>USD</option>
-                </select>
+                <Select
+                  value={currency}
+                  onChange={setCurrency}
+                  options={["CAD", "USD"].map((v) => ({ value: v, label: v }))}
+                  className="h-[38px] rounded-lg px-2 text-sm"
+                />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Sales tax</span>
@@ -221,10 +232,12 @@ export default function SettingsPage() {
             </div>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Card terminal</span>
-              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-                <option>Front desk terminal · connected</option>
-                <option>Mobile reader · connected</option>
-              </select>
+              <Select
+                value={cardTerminal}
+                onChange={setCardTerminal}
+                options={["Front desk terminal · connected", "Mobile reader · connected"].map((v) => ({ value: v, label: v }))}
+                className="h-[38px] rounded-lg px-2 text-sm"
+              />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Late cancellation fee</span>
@@ -277,19 +290,21 @@ export default function SettingsPage() {
             <h5 className="text-[15.5px] font-semibold">Reminder timing</h5>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Session reminder</span>
-              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-                <option>24 hours before</option>
-                <option>12 hours before</option>
-                <option>2 hours before</option>
-              </select>
+              <Select
+                value={reminderTiming}
+                onChange={setReminderTiming}
+                options={["24 hours before", "12 hours before", "2 hours before"].map((v) => ({ value: v, label: v }))}
+                className="h-[38px] rounded-lg px-2 text-sm"
+              />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Package low warning</span>
-              <select className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-                <option>2 sessions left</option>
-                <option>3 sessions left</option>
-                <option>5 sessions left</option>
-              </select>
+              <Select
+                value={packageWarning}
+                onChange={setPackageWarning}
+                options={["2 sessions left", "3 sessions left", "5 sessions left"].map((v) => ({ value: v, label: v }))}
+                className="h-[38px] rounded-lg px-2 text-sm"
+              />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Daily summary to</span>

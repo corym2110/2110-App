@@ -3,6 +3,7 @@
 import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { HeaderButton } from "@/components/ui/HeaderButton";
+import { Select } from "@/components/ui/Select";
 import { PlusIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useThemeStore } from "@/stores/theme";
@@ -94,17 +95,12 @@ function ScheduleInner() {
           <div className="text-[13.5px] text-muted">{periodLabel}</div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2.5">
-          <select
+          <Select
             value={coachFilter}
-            onChange={(e) => setCoachFilter(e.target.value as "all" | CoachId)}
-            className="h-9 rounded-[10px] border border-divider bg-transparent px-2.5 text-[13px]"
-          >
-            {ALL_COACHES.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setCoachFilter(v as "all" | CoachId)}
+            options={ALL_COACHES.map((c) => ({ value: c.id, label: c.name }))}
+            className="h-9 rounded-[10px] px-2.5 text-[13px]"
+          />
           <div className="flex items-center gap-1">
             <button type="button" onClick={() => setOffset(0)} className="h-9 rounded-[10px] border border-divider px-3.5 text-[13px] hover:bg-row">
               Today

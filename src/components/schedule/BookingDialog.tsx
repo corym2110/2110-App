@@ -11,6 +11,7 @@ import { offReason } from "@/lib/availability";
 import { clock, formatDateLong } from "@/lib/time";
 import type { CoachId, SessionTypeName } from "@/types";
 import { XIcon } from "@/components/ui/icons";
+import { Select } from "@/components/ui/Select";
 
 const TIME_OPTIONS: number[] = (() => {
   const out: number[] = [];
@@ -75,35 +76,32 @@ export function BookingDialog({ iso, start, onClose }: { iso: string; start: num
 
         <label className="flex flex-col gap-1.5">
           <span className="text-[11.5px] tracking-wider text-muted uppercase">Session type</span>
-          <select value={type} onChange={(e) => setType(e.target.value as SessionTypeName)} className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm">
-            {SESSION_TYPES.map((t) => (
-              <option key={t.name} value={t.name}>
-                {t.name} · {t.duration} min
-              </option>
-            ))}
-          </select>
+          <Select
+            value={type}
+            onChange={(v) => setType(v as SessionTypeName)}
+            options={SESSION_TYPES.map((t) => ({ value: t.name, label: `${t.name} · ${t.duration} min` }))}
+            className="h-10 rounded-lg px-2.5 text-sm"
+          />
         </label>
 
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1.5">
             <span className="text-[11.5px] tracking-wider text-muted uppercase">Coach</span>
-            <select value={coach} onChange={(e) => setCoach(e.target.value as CoachId)} className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm">
-              {COACHES.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={coach}
+              onChange={(v) => setCoach(v as CoachId)}
+              options={COACHES.map((c) => ({ value: c.id, label: c.name }))}
+              className="h-10 rounded-lg px-2.5 text-sm"
+            />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11.5px] tracking-wider text-muted uppercase">Start time</span>
-            <select value={time} onChange={(e) => setTime(Number(e.target.value))} className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm">
-              {TIME_OPTIONS.map((t) => (
-                <option key={t} value={t}>
-                  {clock(t)}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={String(time)}
+              onChange={(v) => setTime(Number(v))}
+              options={TIME_OPTIONS.map((t) => ({ value: String(t), label: clock(t) }))}
+              className="h-10 rounded-lg px-2.5 text-sm"
+            />
           </label>
         </div>
 

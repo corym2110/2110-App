@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { HeaderButton } from "@/components/ui/HeaderButton";
+import { Select } from "@/components/ui/Select";
 import { PlusIcon, PencilIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useSharedAccountsStore } from "@/stores/sharedAccounts";
@@ -149,14 +150,12 @@ function POSInner() {
 
           <label className="flex flex-col gap-1.5">
             <span className="text-[11.5px] tracking-wider text-muted uppercase">Member</span>
-            <select value={member} onChange={(e) => setMember(e.target.value)} className="h-[38px] rounded-lg border border-divider bg-transparent px-2 text-sm">
-              <option value="Walk-in">Walk-in</option>
-              {MEMBERS.map((m) => (
-                <option key={m.id} value={m.name}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={member}
+              onChange={setMember}
+              options={[{ value: "Walk-in", label: "Walk-in" }, ...MEMBERS.map((m) => ({ value: m.name, label: m.name }))]}
+              className="h-[38px] rounded-lg px-2 text-sm"
+            />
           </label>
           {member !== "Walk-in" && (
             <Link href={`/members/${MEMBERS.find((m) => m.name === member)?.id ?? ""}`} className="-mt-1.5 flex items-center gap-1.5 text-[12.5px] text-link hover:text-link-hover">
@@ -267,14 +266,13 @@ function POSInner() {
           {linked.length > 0 && (
             <div>
               <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Purchasing for</div>
-              <select value={onBehalf} onChange={(e) => setOnBehalf(e.target.value)} className="h-[34px] w-full rounded-lg border border-divider bg-transparent px-2 text-[13.5px]">
-                <option value="">Themselves</option>
-                {linked.map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={onBehalf}
+                onChange={setOnBehalf}
+                placeholder="Themselves"
+                options={[{ value: "", label: "Themselves" }, ...linked.map((n) => ({ value: n, label: n }))]}
+                className="h-[34px] w-full rounded-lg px-2 text-[13.5px]"
+              />
             </div>
           )}
 

@@ -10,6 +10,7 @@ import { MEMBERS, memberByName, initialsOf } from "@/data/mock/members";
 import { capacityOf } from "@/data/mock/sessionTypes";
 import { clock, formatDateLong } from "@/lib/time";
 import { XIcon } from "@/components/ui/icons";
+import { Select } from "@/components/ui/Select";
 import type { AttendanceStatus } from "@/types";
 
 const STATUS_OPTIONS: AttendanceStatus[] = ["Checked in", "No-show", "Late cancel"];
@@ -153,14 +154,13 @@ export function DetailPanel({ occurrence, onClose }: { occurrence: Occurrence; o
           </div>
 
           <div className="mt-3.5 flex gap-1.5">
-            <select value={addPick} onChange={(e) => setAddPick(e.target.value)} className="h-9 min-w-0 flex-1 rounded-[9px] border border-divider bg-transparent px-2 text-[13.5px]">
-              <option value="">Add a member…</option>
-              {MEMBERS.filter((m) => !roster.includes(m.name)).map((m) => (
-                <option key={m.id} value={m.name}>
-                  {m.name}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={addPick}
+              onChange={setAddPick}
+              placeholder="Add a member…"
+              options={MEMBERS.filter((m) => !roster.includes(m.name)).map((m) => ({ value: m.name, label: m.name }))}
+              className="h-9 min-w-0 flex-1 rounded-[9px] px-2 text-[13.5px]"
+            />
             <button
               type="button"
               onClick={() => {

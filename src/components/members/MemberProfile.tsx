@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { XIcon } from "@/components/ui/icons";
+import { Select } from "@/components/ui/Select";
 import { useThemeStore } from "@/stores/theme";
 import { addSharedAccount, removeSharedAccount } from "@/server/members";
 import { sessionTypeColor, SHORT_LABEL } from "@/data/mock/sessionTypes";
@@ -98,20 +99,13 @@ export function MemberProfile({
           </div>
           {addOpen && (
             <div className="mb-3.5 flex gap-1.5">
-              <select
+              <Select
                 value={addPick}
-                onChange={(e) => setAddPick(e.target.value)}
-                className="h-[34px] min-w-0 flex-1 rounded-lg border border-divider bg-transparent px-2.5 text-[13px]"
-              >
-                <option value="">Choose a member…</option>
-                {candidates
-                  .filter((c) => !paysFor.includes(c.name))
-                  .map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-              </select>
+                onChange={setAddPick}
+                placeholder="Choose a member…"
+                options={candidates.filter((c) => !paysFor.includes(c.name)).map((c) => ({ value: c.name, label: c.name }))}
+                className="h-[34px] min-w-0 flex-1 rounded-lg px-2.5 text-[13px]"
+              />
               <button
                 type="button"
                 disabled={isPending}
