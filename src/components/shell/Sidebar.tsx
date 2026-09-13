@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { UserButton, useUser } from "@clerk/nextjs";
 import { useUIStore } from "@/stores/ui";
 import {
   DashboardIcon,
@@ -25,7 +26,9 @@ const NAV = [
 export function Sidebar() {
   const collapsed = useUIStore((s) => s.collapsed);
   const pathname = usePathname();
+  const { user } = useUser();
   const width = collapsed ? 76 : 232;
+  const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Coach";
 
   return (
     <nav
@@ -69,23 +72,19 @@ export function Sidebar() {
           <SettingsIcon size={17} className="flex-none" />
           {!collapsed && <span className="whitespace-nowrap">Settings</span>}
         </Link>
-        <Link
-          href="/preferences"
-          title="My preferences"
-          className={`mt-1 flex items-center gap-2.5 rounded-xl px-3 py-2.5 overflow-hidden hover:bg-white/12 ${
-            collapsed ? "justify-center" : ""
-          } ${pathname === "/preferences" ? "bg-white/6" : ""}`}
-        >
-          <div className="grid h-[30px] w-[30px] flex-none place-items-center rounded-full bg-accent-deep text-[12px] font-semibold text-[#e7e5fe]">
-            CM
-          </div>
+        <div className={`mt-1 flex items-center gap-2.5 rounded-xl px-3 py-2.5 overflow-hidden ${collapsed ? "justify-center" : ""}`}>
+          <UserButton
+            appearance={{
+              elements: { avatarBox: "h-[30px] w-[30px]" },
+            }}
+          />
           {!collapsed && (
-            <div className="min-w-0">
-              <div className="truncate text-[13.5px] font-medium">Cory Martin</div>
+            <Link href="/preferences" className="min-w-0 hover:opacity-80">
+              <div className="truncate text-[13.5px] font-medium">{displayName}</div>
               <div className="text-[11.5px] text-white/55">Facility Supervisor</div>
-            </div>
+            </Link>
           )}
-        </Link>
+        </div>
       </div>
     </nav>
   );
