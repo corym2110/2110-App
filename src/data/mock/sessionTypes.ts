@@ -54,5 +54,5 @@ export const SHORT_LABEL: Record<SessionTypeName, string> = {
   "Remote Consult": "Remote",
   Class: "Class",
   Bodpod: "Bodpod",
-  "Blueprint and Baseline": "Blueprint and Baseline",
+  "Blueprint and Baseline": "Blueprint",
 };

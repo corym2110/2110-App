@@ -76,11 +76,13 @@ export type FeeDecision = "charged" | "waived";
 export interface Product {
   id: string;
   name: string;
-  category: "Personal Training" | "Memberships" | "Assessments" | "Other";
+  category: "Personal Training" | "Remote Coaching" | "Memberships" | "Assessments" | "Other";
   price: number;
   meta: string;
   recur?: string;
   variablePrice?: boolean;
+  /** Which service this maps to, for color-coding that matches the Schedule. Omit for items with no 1:1 session type (memberships, gift cards, apparel). */
+  sessionType?: SessionTypeName;
 }
 
 export interface CartLine {

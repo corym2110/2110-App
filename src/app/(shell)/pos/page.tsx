@@ -13,10 +13,12 @@ import { useCoaches } from "@/lib/useCoaches";
 import { getSharedAccountLinks, type SharedAccountLink } from "@/server/members";
 import { createSale } from "@/server/sales";
 import { CATALOG, matchProduct } from "@/data/mock/catalog";
+import { sessionTypeColor, SHORT_LABEL } from "@/data/mock/sessionTypes";
+import { useThemeStore } from "@/stores/theme";
 import { money } from "@/lib/time";
 import type { Product } from "@/types";
 
-const CATEGORIES: Product["category"][] = ["Personal Training", "Memberships", "Assessments", "Other"];
+const CATEGORIES: Product["category"][] = ["Personal Training", "Remote Coaching", "Memberships", "Assessments", "Other"];
 const PAYMENT_METHODS = ["Card", "Cash", "E-transfer", "Package credit"];
 
 function POSInner() {
@@ -31,8 +33,9 @@ function POSInner() {
 
   const members = useMembers();
   const coaches = useCoaches();
+  const dark = useThemeStore((s) => s.theme === "dark");
 
-  const [category, setCategory] = useState<Product["category"] | "All">("All");
+  const [category, setCategory] = useState<Product["category"]>("Personal Training");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<Record<string, number>>(preselect ? { [preselect.id]: 1 } : {});
   const [amounts, setAmounts] = useState<Record<string, string>>({});
@@ -91,7 +94,7 @@ function POSInner() {
   );
 
   const visible = CATALOG.filter((p) => {
-    if (category !== "All" && p.category !== category) return false;
+    if (p.category !== category) return false;
     if (query.trim() && !p.name.toLowerCase().includes(query.trim().toLowerCase())) return false;
     return true;
   });
@@ -119,7 +122,7 @@ function POSInner() {
           <div className="text-[13.5px] text-muted">{lines.length} item{lines.length === 1 ? "" : "s"} in current sale</div>
         </div>
         <div className="ml-auto flex flex-wrap gap-1 rounded-[11px] border border-divider p-1">
-          {(["All", ...CATEGORIES] as const).map((c) => (
+          {CATEGORIES.map((c) => (
             <button
               key={c}
               type="button"
@@ -141,15 +144,17 @@ function POSInner() {
               placeholder="Search products"
               className="mb-3 h-9 w-full rounded-lg border border-divider bg-transparent px-3 text-sm"
             />
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] items-start gap-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] items-stretch gap-3">
               {visible.map((p) => {
                 const qty = cart[p.id] ?? 0;
+                const color = p.sessionType ? sessionTypeColor(p.sessionType, dark) : undefined;
                 return (
                   <button
                     key={p.id}
                     type="button"
                     onClick={() => setCart((c) => ({ ...c, [p.id]: (c[p.id] ?? 0) + 1 }))}
-                    className={`relative flex min-h-[104px] flex-col gap-1 rounded-xl border px-3.5 py-3 text-left hover:bg-row hover:border-accent ${
+                    style={color ? { borderLeftColor: color, borderLeftWidth: 3 } : undefined}
+                    className={`relative flex h-[136px] flex-col gap-1 rounded-xl border px-3.5 py-3 text-left hover:bg-row hover:border-accent ${
                       qty > 0 ? "border-accent" : "border-divider"
                     }`}
                   >
@@ -158,8 +163,10 @@ function POSInner() {
                         {qty}
                       </span>
                     )}
-                    <span className="text-[10.5px] font-semibold tracking-wide text-accent uppercase">{p.category}</span>
-                    <span className="flex-1 text-pretty text-sm font-medium">{p.name}</span>
+                    <span className="text-[10.5px] font-semibold tracking-wide uppercase" style={color ? { color } : undefined}>
+                      {p.sessionType ? SHORT_LABEL[p.sessionType] : p.category}
+                    </span>
+                    <span className="line-clamp-2 flex-1 text-pretty text-sm font-medium">{p.name}</span>
                     <span className="flex items-baseline justify-between gap-2">
                       <span className="text-[15px] font-semibold tabular-nums">
                         {p.price ? money(p.price) : "$0"}
