@@ -4,10 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
-import { useBookingsStore } from "@/stores/bookings";
-import { useAttendanceStore } from "@/stores/attendance";
-import { occurrencesForDate } from "@/lib/scheduleEngine";
-import { addDays, clock, DOW_LABELS, formatDateLong, isoOf, mondayOf, money, moneyRounded, startOfToday } from "@/lib/time";
+import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
+import { addDays, clock, DOW_LABELS, formatDateLong, isoOf, mondayOf, money, moneyRounded, slotKey, startOfToday } from "@/lib/time";
 import { useMembers } from "@/lib/useMembers";
 import { useCurrentCoach } from "@/lib/useCoaches";
 import { getRevenueForRange, type DashboardRangeKey } from "@/server/sales";
@@ -21,8 +19,6 @@ function memberHref(name: string, members: { id: string; name: string }[]): stri
 
 export default function DashboardPage() {
   const [range, setRange] = useState<Range>("Day");
-  const { bookings, series, moves, cancellations } = useBookingsStore();
-  const statuses = useAttendanceStore((s) => s.statuses);
   const members = useMembers();
   const coach = useCurrentCoach();
   const isAdmin = coach?.isAdmin ?? false;
@@ -30,35 +26,40 @@ export default function DashboardPage() {
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
   const firstName = coach?.name?.split(" ")[0] ?? "there";
 
-  const occurrences = useMemo(
-    () => occurrencesForDate(today, moves, bookings, series, cancellations),
-    [today, moves, bookings, series, cancellations],
-  );
-
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(mondayOf(today), i)), [today]);
-  const weekOverview = useMemo(
-    () =>
-      weekDays.map((d) => ({
-        date: d,
-        label: DOW_LABELS[(d.getDay() + 6) % 7],
-        count: occurrencesForDate(d, moves, bookings, series, cancellations).length,
-      })),
-    [weekDays, moves, bookings, series, cancellations],
-  );
+
+  // Fetch one range wide enough to cover both "this week" and "this month" (they can spill into
+  // neighbouring months at the edges), so Day/Week/Month all come from a single query.
+  const { rangeFromIso, rangeToIso, daysInMonth } = useMemo(() => {
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const weekStart = weekDays[0];
+    const weekEnd = weekDays[6];
+    const from = weekStart < monthStart ? weekStart : monthStart;
+    const to = weekEnd > monthEnd ? weekEnd : monthEnd;
+    return { rangeFromIso: isoOf(from), rangeToIso: isoOf(to), daysInMonth: monthEnd.getDate() };
+  }, [today, weekDays]);
+
+  const scheduleData = useScheduleRange(rangeFromIso, rangeToIso, isAdmin ? undefined : coach?.id);
+  const { attendance } = scheduleData;
+
+  const occurrences = occurrencesOn(scheduleData, isoOf(today));
+
+  const weekOverview = weekDays.map((d) => ({
+    date: d,
+    label: DOW_LABELS[(d.getDay() + 6) % 7],
+    count: occurrencesOn(scheduleData, isoOf(d)).length,
+  }));
   const maxWeekCount = Math.max(1, ...weekOverview.map((d) => d.count));
   const sessionsThisWeek = weekOverview.reduce((a, d) => a + d.count, 0);
 
-  const sessionsThisMonth = useMemo(() => {
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    let total = 0;
-    for (let i = 1; i <= daysInMonth; i++) {
-      total += occurrencesForDate(new Date(today.getFullYear(), today.getMonth(), i), moves, bookings, series, cancellations).length;
-    }
-    return total;
-  }, [today, moves, bookings, series, cancellations]);
+  let sessionsThisMonth = 0;
+  for (let i = 1; i <= daysInMonth; i++) {
+    sessionsThisMonth += occurrencesOn(scheduleData, isoOf(new Date(today.getFullYear(), today.getMonth(), i))).length;
+  }
 
   const completedToday = occurrences.filter((o) => {
-    const status = statuses[`${o.iso}-${o.start}-${o.coach}-${o.roster ? "" : o.name}`];
+    const status = attendance[slotKey(o.iso, o.start, o.coach, o.roster ? "" : o.name)];
     const missed = status === "No-show" || status === "Late cancel" || status === "Cancelled";
     return !missed && o.start + o.duration <= nowMin;
   }).length;
@@ -132,8 +133,7 @@ export default function DashboardPage() {
 
           <div className="flex flex-1 flex-col">
             {occurrences.map((o) => {
-              const attKey = `${o.iso}-${o.start}-${o.coach}-`;
-              const status = statuses[attKey + (o.roster ? "" : o.name)];
+              const status = attendance[slotKey(o.iso, o.start, o.coach, o.roster ? "" : o.name)];
               const missed = status === "No-show" || status === "Late cancel" || status === "Cancelled";
               const completed = !missed && o.start + o.duration <= nowMin;
               const upNext = !missed && o.start <= nowMin && o.start + o.duration > nowMin;

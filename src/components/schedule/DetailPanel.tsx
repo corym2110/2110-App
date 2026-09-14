@@ -1,12 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
-import type { Occurrence } from "@/lib/scheduleEngine";
-import { useAttendanceStore, slotKey } from "@/stores/attendance";
-import { useWaitlistStore } from "@/stores/waitlists";
+import type { Occurrence } from "@/server/schedule";
+import { setAttendanceStatus, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist } from "@/server/schedule";
 import { capacityOf } from "@/data/mock/sessionTypes";
-import { clock, formatDateLong, initialsOf } from "@/lib/time";
+import { clock, formatDateLong, initialsOf, slotKey } from "@/lib/time";
 import { XIcon, PencilIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import type { CoachRow } from "@/server/coaches";
@@ -14,44 +13,36 @@ import type { AttendanceStatus, Member } from "@/types";
 
 const STATUS_OPTIONS: AttendanceStatus[] = ["Checked in", "No-show", "Late cancel"];
 
-function StatusButtons({ attKey }: { attKey: string }) {
-  const status = useAttendanceStore((s) => s.statuses[attKey]);
-  const setStatus = useAttendanceStore((s) => s.setStatus);
-  return (
-    <div className="flex gap-1.5">
-      {STATUS_OPTIONS.map((s) => (
-        <button
-          key={s}
-          type="button"
-          onClick={() => setStatus(attKey, status === s ? null : s)}
-          className={`h-8 flex-1 rounded-lg border text-xs ${
-            status === s ? "border-accent bg-row font-semibold text-fg" : "border-divider text-muted"
-          }`}
-        >
-          {s === "Checked in" ? "Check in" : s}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export function DetailPanel({
   occurrence,
   members,
   coaches,
+  attendance,
+  waitlists,
+  classAdds,
   onClose,
   onEdit,
+  onDataChanged,
 }: {
   occurrence: Occurrence;
   members: Member[];
   coaches: CoachRow[];
+  attendance: Record<string, string>;
+  waitlists: Record<string, string[]>;
+  classAdds: Record<string, string[]>;
   onClose: () => void;
   onEdit: (occurrence: Occurrence) => void;
+  onDataChanged: () => void;
 }) {
-  const statuses = useAttendanceStore((s) => s.statuses);
-  const setStatus = useAttendanceStore((s) => s.setStatus);
-  const { waitlists, classAdds, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist } = useWaitlistStore();
   const [addPick, setAddPick] = useState("");
+  const [, startTransition] = useTransition();
+
+  function setStatus(key: string, status: AttendanceStatus | null) {
+    startTransition(async () => {
+      await setAttendanceStatus(key, occurrence.iso, status);
+      onDataChanged();
+    });
+  }
 
   const isGroup = !!occurrence.roster?.length;
   const roster = [...(occurrence.roster ?? []), ...(classAdds[occurrence.key] ?? [])];
@@ -61,6 +52,8 @@ export function DetailPanel({
   const waiting = waitlists[occurrence.key] ?? [];
   const member = !isGroup ? members.find((m) => m.name === occurrence.name) : undefined;
   const coachDisplayName = coaches.find((c) => c.id === occurrence.coach)?.name ?? occurrence.coach;
+  const soloKey = slotKey(occurrence.iso, occurrence.start, occurrence.coach, occurrence.name);
+  const soloStatus = attendance[soloKey] as AttendanceStatus | undefined;
 
   return (
     <div className="panel-shadow fixed bottom-0 right-0 top-16 z-50 flex w-[352px] max-w-full flex-col overflow-y-auto border-l border-divider bg-surface">
@@ -103,7 +96,20 @@ export function DetailPanel({
             <div className="text-[13.5px] text-muted">{occurrence.name}</div>
           )}
           <div className="mt-3">
-            <StatusButtons attKey={slotKey(occurrence.iso, occurrence.start, occurrence.coach, occurrence.name)} />
+            <div className="flex gap-1.5">
+              {STATUS_OPTIONS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStatus(soloKey, soloStatus === s ? null : s)}
+                  className={`h-8 flex-1 rounded-lg border text-xs ${
+                    soloStatus === s ? "border-accent bg-row font-semibold text-fg" : "border-divider text-muted"
+                  }`}
+                >
+                  {s === "Checked in" ? "Check in" : s}
+                </button>
+              ))}
+            </div>
           </div>
           {member && (
             <Link
@@ -140,7 +146,7 @@ export function DetailPanel({
           <div className="flex flex-col gap-2">
             {roster.map((n) => {
               const key = slotKey(occurrence.iso, occurrence.start, occurrence.coach, n);
-              const status = statuses[key];
+              const status = attendance[key];
               const m = members.find((mm) => mm.name === n);
               return (
                 <div key={n} className="flex items-center gap-1.5">
@@ -185,8 +191,12 @@ export function DetailPanel({
               type="button"
               onClick={() => {
                 if (!addPick) return;
-                if (full) addToWaitlist(occurrence.key, addPick);
-                else addToClass(occurrence.key, addPick);
+                const pick = addPick;
+                startTransition(async () => {
+                  if (full) await addToWaitlist(occurrence.key, pick);
+                  else await addToClass(occurrence.key, pick);
+                  onDataChanged();
+                });
                 setAddPick("");
               }}
               className="h-9 flex-none rounded-[9px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent"
@@ -203,12 +213,16 @@ export function DetailPanel({
                   <div key={n} className="flex min-w-0 items-center gap-2.5 rounded-[9px] border border-dashed border-divider px-2.5 py-1.5">
                     <span className="grid h-[22px] w-[22px] flex-none place-items-center rounded-full bg-row text-[10px] font-semibold text-muted">{i + 1}</span>
                     <span className="min-w-0 flex-1 truncate text-[13.5px]">{n}</span>
-                    <button type="button" onClick={() => promoteFromWaitlist(occurrence.key, n)} className="h-[26px] flex-none rounded-full border border-divider px-2.5 text-xs hover:bg-row">
+                    <button
+                      type="button"
+                      onClick={() => startTransition(async () => { await promoteFromWaitlist(occurrence.key, n); onDataChanged(); })}
+                      className="h-[26px] flex-none rounded-full border border-divider px-2.5 text-xs hover:bg-row"
+                    >
                       Book in
                     </button>
                     <button
                       type="button"
-                      onClick={() => removeFromWaitlist(occurrence.key, n)}
+                      onClick={() => startTransition(async () => { await removeFromWaitlist(occurrence.key, n); onDataChanged(); })}
                       title="Remove from waitlist"
                       className="grid h-[26px] w-[26px] flex-none place-items-center rounded-md text-muted hover:bg-row hover:text-fg"
                     >

@@ -6,14 +6,12 @@ import { Card } from "@/components/ui/Card";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useThemeStore } from "@/stores/theme";
-import { useBookingsStore } from "@/stores/bookings";
-import { useAttendanceStore, slotKey } from "@/stores/attendance";
 import { useCoaches } from "@/lib/useCoaches";
-import { occurrencesForDate } from "@/lib/scheduleEngine";
+import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
 import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@/server/members";
 import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
 import { sessionTypeColor, SHORT_LABEL } from "@/data/mock/sessionTypes";
-import { addDays, formatDateShort, initialsOf, money, startOfToday } from "@/lib/time";
+import { addDays, formatDateShort, initialsOf, isoOf, money, slotKey, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
 
 const HISTORY_LOOKBACK_DAYS = 90;
@@ -36,20 +34,21 @@ export function MemberProfile({
   const [unpaidSales, setUnpaidSales] = useState<UnpaidSale[]>([]);
   const [isPayingSale, startPaySale] = useTransition();
 
-  const { bookings, series, moves, cancellations } = useBookingsStore();
-  const statuses = useAttendanceStore((s) => s.statuses);
   const coaches = useCoaches();
 
   useEffect(() => {
     getUnpaidSalesForMember(member.id).then(setUnpaidSales);
   }, [member.id]);
 
+  const today = useMemo(() => startOfToday(), []);
+  const fromIso = useMemo(() => isoOf(addDays(today, -HISTORY_LOOKBACK_DAYS)), [today]);
+  const scheduleData = useScheduleRange(fromIso, isoOf(today));
+
   const history = useMemo(() => {
-    const today = startOfToday();
     const rows: { iso: string; start: number; type: SessionTypeName; coach: string; status: string | null }[] = [];
-    for (let i = 0; i < HISTORY_LOOKBACK_DAYS; i++) {
+    for (let i = 0; i <= HISTORY_LOOKBACK_DAYS; i++) {
       const date = addDays(today, -i);
-      const occs = occurrencesForDate(date, moves, bookings, series, cancellations);
+      const occs = occurrencesOn(scheduleData, isoOf(date));
       for (const o of occs) {
         if (o.name !== member.name && !(o.roster ?? []).includes(member.name)) continue;
         rows.push({
@@ -57,12 +56,12 @@ export function MemberProfile({
           start: o.start,
           type: o.type,
           coach: coaches.find((c) => c.id === o.coach)?.name ?? o.coach,
-          status: statuses[slotKey(o.iso, o.start, o.coach, member.name)] ?? null,
+          status: scheduleData.attendance[slotKey(o.iso, o.start, o.coach, member.name)] ?? null,
         });
       }
     }
     return rows.sort((a, b) => (a.iso === b.iso ? b.start - a.start : b.iso < a.iso ? -1 : 1));
-  }, [bookings, series, moves, cancellations, statuses, member.name, coaches]);
+  }, [scheduleData, today, member.name, coaches]);
 
   return (
     <div className="flex flex-col gap-[18px]">

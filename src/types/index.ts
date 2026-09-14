@@ -70,18 +70,6 @@ export interface Member {
   province?: string;
 }
 
-/** Recurring weekly template row, as booked into the schedule. */
-export interface RecurringRow {
-  id: string;
-  dow: number; // 0=Mon..6=Sun
-  start: number; // minutes from midnight
-  duration: number;
-  name: string; // client name, or session title for group/class ("" for generic Group Training)
-  type: SessionTypeName;
-  coach: CoachId;
-  roster?: string[]; // present for group/class sessions
-}
-
 export type AttendanceStatus = "Checked in" | "No-show" | "Late cancel" | "Cancelled";
 export type FeeDecision = "charged" | "waived";
 

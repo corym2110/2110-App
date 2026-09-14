@@ -1,7 +1,7 @@
 "use client";
 
 import type { CoachAvailability, CoachId } from "@/types";
-import type { Occurrence } from "@/lib/scheduleEngine";
+import type { Occurrence } from "@/server/schedule";
 import { layoutLanes } from "@/lib/layoutLanes";
 import { offReason } from "@/lib/availability";
 import { clock } from "@/lib/time";

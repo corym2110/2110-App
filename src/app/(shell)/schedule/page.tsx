@@ -7,9 +7,9 @@ import { Select } from "@/components/ui/Select";
 import { PlusIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useThemeStore } from "@/stores/theme";
-import { useAvailabilityStore } from "@/stores/availability";
-import { useBookingsStore } from "@/stores/bookings";
-import { occurrencesForDate, type Occurrence } from "@/lib/scheduleEngine";
+import { useAvailabilityForCoaches } from "@/lib/useCoachAvailability";
+import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
+import { moveOccurrence, type Occurrence } from "@/server/schedule";
 import { addDays, formatDateShort, formatDateLong, isoOf, mondayOf, startOfToday, MONTHS } from "@/lib/time";
 import { useMembers } from "@/lib/useMembers";
 import { useCoaches } from "@/lib/useCoaches";
@@ -41,8 +41,6 @@ function ScheduleInner() {
   const [editing, setEditing] = useState<Occurrence | null>(null);
 
   const dark = useThemeStore((s) => s.theme === "dark");
-  const availability = useAvailabilityStore((s) => s.byCoach);
-  const { bookings, series, moves, cancellations, move } = useBookingsStore();
   const members = useMembers();
   const coaches = useCoaches();
   const allCoaches = useMemo(() => [{ id: "all", name: "All coaches" }, ...coaches], [coaches]);
@@ -66,6 +64,11 @@ function ScheduleInner() {
   const monthAnchor = useMemo(() => new Date(today.getFullYear(), today.getMonth() + offset, 1), [today, offset]);
 
   const relevantCoachIds: CoachId[] = coachFilter === "all" ? coaches.map((c) => c.id) : [coachFilter];
+  const availability = useAvailabilityForCoaches(relevantCoachIds);
+
+  const rangeFromIso = columns.length > 0 ? isoOf(columns[0]) : isoOf(today);
+  const rangeToIso = columns.length > 0 ? isoOf(columns[columns.length - 1]) : isoOf(today);
+  const scheduleData = useScheduleRange(rangeFromIso, rangeToIso, coachFilter === "all" ? undefined : coachFilter);
 
   const periodLabel =
     view === "Day"
@@ -74,14 +77,9 @@ function ScheduleInner() {
         ? `${formatDateShort(columns[0])} – ${formatDateShort(columns[6])}`
         : `${MONTHS[monthAnchor.getMonth()]} ${monthAnchor.getFullYear()}`;
 
-  function occurrencesFor(date: Date): Occurrence[] {
-    return occurrencesForDate(date, moves, bookings, series, cancellations).filter((o) => coachFilter === "all" || o.coach === coachFilter);
-  }
-
   function handleDrop(date: Date, startMin: number) {
     if (!dragging) return;
-    // Find the dragged occurrence among all currently rendered columns.
-    const all = columns.flatMap((d) => occurrencesForDate(d, moves, bookings, series, cancellations));
+    const all = columns.flatMap((d) => occurrencesOn(scheduleData, isoOf(d)));
     const source = all.find((o) => o.key === dragging.key);
     if (!source) {
       setDragging(null);
@@ -171,7 +169,7 @@ function ScheduleInner() {
                 <DayColumn
                   key={isoOf(d)}
                   date={d}
-                  occurrences={occurrencesFor(d)}
+                  occurrences={occurrencesOn(scheduleData, isoOf(d))}
                   selectedKey={selected?.key ?? null}
                   onSelect={setSelected}
                   onSlotClick={(startMin) => setDraft({ iso: isoOf(d), start: startMin })}
@@ -194,20 +192,36 @@ function ScheduleInner() {
           occurrence={selected}
           members={members}
           coaches={coaches}
+          attendance={scheduleData.attendance}
+          waitlists={scheduleData.waitlists}
+          classAdds={scheduleData.classAdds}
           onClose={() => setSelected(null)}
+          onDataChanged={scheduleData.refetch}
           onEdit={(o) => {
             setEditing(o);
             setSelected(null);
           }}
         />
       )}
-      {draft && <BookingDialog iso={draft.iso} start={draft.start} members={members} coaches={coaches} onClose={() => setDraft(null)} />}
+      {draft && (
+        <BookingDialog
+          iso={draft.iso}
+          start={draft.start}
+          members={members}
+          coaches={coaches}
+          dayOccurrences={occurrencesOn(scheduleData, draft.iso)}
+          onSaved={scheduleData.refetch}
+          onClose={() => setDraft(null)}
+        />
+      )}
       {editing && (
         <BookingDialog
           iso={editing.iso}
           start={editing.start}
           members={members}
           coaches={coaches}
+          dayOccurrences={occurrencesOn(scheduleData, editing.iso)}
+          onSaved={scheduleData.refetch}
           editing={editing}
           onClose={() => setEditing(null)}
         />
@@ -235,8 +249,14 @@ function ScheduleInner() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  move(pendingMove.occurrence.key, { iso: pendingMove.iso, start: pendingMove.start });
+                onClick={async () => {
+                  const { occurrence, iso, start } = pendingMove;
+                  await moveOccurrence(
+                    { sourceId: occurrence.sourceId, key: occurrence.key, type: occurrence.type, duration: occurrence.duration, name: occurrence.name, roster: occurrence.roster },
+                    iso,
+                    start,
+                  );
+                  scheduleData.refetch();
                   setPendingMove(null);
                   setSelected(null);
                 }}

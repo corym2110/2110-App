@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { SESSION_TYPES, capacityOf, sessionTypeByName } from "@/data/mock/sessionTypes";
-import { useAvailabilityStore } from "@/stores/availability";
-import { useBookingsStore } from "@/stores/bookings";
-import { occurrencesForDate, type Occurrence } from "@/lib/scheduleEngine";
+import { useAvailabilityForCoaches } from "@/lib/useCoachAvailability";
+import { addBooking, addSeries, cancelOccurrence, type Occurrence } from "@/server/schedule";
 import { offReason } from "@/lib/availability";
 import { addDays, clock, dowIndex, DOW_LABELS, formatDateLong, isoOf } from "@/lib/time";
 import type { CoachRow } from "@/server/coaches";
@@ -23,25 +22,33 @@ export function BookingDialog({
   iso,
   start,
   onClose,
+  onSaved,
   members,
   coaches,
+  dayOccurrences,
   editing,
 }: {
   iso: string;
   start: number;
   onClose: () => void;
+  onSaved: () => void;
   members: Member[];
   coaches: CoachRow[];
+  dayOccurrences: Occurrence[];
   editing?: Occurrence;
 }) {
   const [type, setType] = useState<SessionTypeName>(editing?.type ?? "Personal Training");
-  const [coach, setCoach] = useState<CoachId>(editing?.coach ?? coaches[0]?.id ?? "");
+  // Coaches can still be loading when this dialog first opens; falling back to coaches[0] here
+  // (rather than only at mount) means we still land on a real coach once they arrive, instead of
+  // silently submitting with no coach selected at all.
+  const [chosenCoach, setCoach] = useState<CoachId>(editing?.coach ?? "");
+  const coach = chosenCoach || coaches[0]?.id || "";
   const [time, setTime] = useState(editing?.start ?? start);
   const [client, setClient] = useState(editing?.name ?? "");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
-  const byCoach = useAvailabilityStore((s) => s.byCoach);
-  const { bookings, series, moves, cancellations, addBooking, addSeries, updateBooking, cancelOccurrence } = useBookingsStore();
+  const availByCoach = useAvailabilityForCoaches([coach]);
 
   const date = useMemo(() => new Date(`${iso}T00:00:00`), [iso]);
 
@@ -65,11 +72,9 @@ export function BookingDialog({
   }
 
   const duration = sessionTypeByName(type).duration;
-  const warn = offReason(byCoach[coach], date, time, duration);
+  const warn = offReason(availByCoach[coach], date, time, duration);
   const cap = capacityOf(type);
-  const existing = occurrencesForDate(date, moves, bookings, series, cancellations).filter(
-    (o) => o.start === time && o.coach === coach && o.type === type && o.key !== editing?.key,
-  );
+  const existing = dayOccurrences.filter((o) => o.start === time && o.coach === coach && o.type === type && o.key !== editing?.key);
   const head = existing.reduce((a, o) => a + (o.roster?.length ?? 1), 0);
   const full = cap > 0 && head >= cap;
 
@@ -78,35 +83,37 @@ export function BookingDialog({
   const recurReady = !recur || selectedDays.length > 0;
 
   function confirm() {
+    if (!coach) return;
     if (!client.trim() && type !== "Group Training" && type !== "Class") return;
     if (recur && canRecur && selectedDays.length === 0) return;
 
-    if (editing) {
-      const isOneOff = bookings.some((b) => b.id === editing.sourceId);
-      if (isOneOff) {
-        updateBooking(editing.sourceId, { start: time, duration, type, coach, name: client.trim() });
-      } else {
-        cancelOccurrence(editing.sourceId, editing.key);
-        addBooking({ iso, start: time, duration, type, coach, name: client.trim() });
+    startTransition(async () => {
+      if (editing) {
+        // Cancel the original (deletes a one-off booking outright, or excludes just this date
+        // from its recurring series) then create the edited version as a fresh one-off booking.
+        await cancelOccurrence(editing.sourceId, editing.key);
+        await addBooking({ iso, start: time, duration, type, coachId: coach, name: client.trim() });
+        onSaved();
+        onClose();
+        return;
       }
-      onClose();
-      return;
-    }
 
-    if (recur && canRecur) {
-      addSeries({
-        client: client.trim(),
-        type,
-        coach,
-        duration,
-        days: recurDays,
-        fromIso: iso,
-        toIso: endMode === "weeks" ? isoOf(addDays(date, endWeeks * 7)) : undefined,
-      });
-    } else {
-      addBooking({ iso, start: time, duration, type, coach, name: client.trim() });
-    }
-    onClose();
+      if (recur && canRecur) {
+        await addSeries({
+          clientName: client.trim(),
+          type,
+          coachId: coach,
+          duration,
+          days: recurDays,
+          fromIso: iso,
+          toIso: endMode === "weeks" ? isoOf(addDays(date, endWeeks * 7)) : undefined,
+        });
+      } else {
+        await addBooking({ iso, start: time, duration, type, coachId: coach, name: client.trim() });
+      }
+      onSaved();
+      onClose();
+    });
   }
 
   return (
@@ -256,11 +263,15 @@ export function BookingDialog({
             <div className="mt-2 flex gap-2">
               <button
                 type="button"
+                disabled={isPending}
                 onClick={() => {
-                  cancelOccurrence(editing.sourceId, editing.key);
-                  onClose();
+                  startTransition(async () => {
+                    await cancelOccurrence(editing.sourceId, editing.key);
+                    onSaved();
+                    onClose();
+                  });
                 }}
-                className="h-8 rounded-full bg-bad px-3.5 text-[12.5px] font-semibold text-white"
+                className="h-8 rounded-full bg-bad px-3.5 text-[12.5px] font-semibold text-white disabled:opacity-60"
               >
                 Yes, cancel it
               </button>
@@ -286,10 +297,10 @@ export function BookingDialog({
             <button
               type="button"
               onClick={confirm}
-              disabled={!recurReady}
+              disabled={!recurReady || isPending || !coach}
               className="h-10 rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {editing ? "Save changes" : warn || full ? "Book anyway" : "Book session"}
+              {!coach ? "Loading coaches…" : isPending ? "Saving…" : editing ? "Save changes" : warn || full ? "Book anyway" : "Book session"}
             </button>
           </div>
         </div>

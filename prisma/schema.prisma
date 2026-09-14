@@ -7,14 +7,95 @@ datasource db {
 }
 
 model Coach {
-  id      String   @id @default(cuid())
-  name    String
-  email   String   @unique
-  role    String
-  isAdmin Boolean  @default(false)
-  active  Boolean  @default(true)
-  members Member[]
-  sales   Sale[]
+  id          String            @id @default(cuid())
+  name        String
+  email       String            @unique
+  role        String
+  isAdmin     Boolean           @default(false)
+  active      Boolean           @default(true)
+  /** Record<DayOfWeek, { on: boolean; shifts: { start: number; end: number }[] }> */
+  weeklyHours Json?
+  members     Member[]
+  sales       Sale[]
+  timeOff     TimeOff[]
+  bookings    Booking[]
+  series      RecurringSeries[]
+}
+
+model TimeOff {
+  id      String @id @default(cuid())
+  coachId String
+  coach   Coach  @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  fromIso String
+  toIso   String
+  reason  String
+  type    String // "Full days" | "Partial day"
+}
+
+/** A single booked session on a specific date — created directly, or as a one-off
+    edit/move of a RecurringSeries occurrence (which excludes that date on the series). */
+model Booking {
+  id        String   @id @default(cuid())
+  iso       String
+  start     Int
+  duration  Int
+  type      String
+  coachId   String
+  coach     Coach    @relation(fields: [coachId], references: [id])
+  name      String
+  roster    String[] @default([])
+  createdAt DateTime @default(now())
+
+  @@index([iso])
+}
+
+/** A weekly-recurring booking template. `days` maps day label -> start minute
+    (e.g. {"Mon": 360, "Wed": 900}), so different days can run at different times.
+    `excludedDates` holds any single occurrence that was cancelled or edited/moved
+    away (edited occurrences become their own Booking on the new date/time). */
+model RecurringSeries {
+  id            String   @id @default(cuid())
+  clientName    String
+  type          String
+  coachId       String
+  coach         Coach    @relation(fields: [coachId], references: [id])
+  duration      Int
+  days          Json
+  fromIso       String
+  toIso         String?
+  excludedDates String[] @default([])
+  createdAt     DateTime @default(now())
+}
+
+model AttendanceRecord {
+  slotKey   String   @id
+  iso       String
+  status    String
+  updatedAt DateTime @updatedAt
+
+  @@index([iso])
+}
+
+model WaitlistEntry {
+  id            String   @id @default(cuid())
+  occurrenceKey String
+  iso           String
+  memberName    String
+  createdAt     DateTime @default(now())
+
+  @@unique([occurrenceKey, memberName])
+  @@index([iso])
+}
+
+model ClassAddIn {
+  id            String   @id @default(cuid())
+  occurrenceKey String
+  iso           String
+  memberName    String
+  createdAt     DateTime @default(now())
+
+  @@unique([occurrenceKey, memberName])
+  @@index([iso])
 }
 
 model Member {

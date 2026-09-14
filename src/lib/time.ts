@@ -62,6 +62,11 @@ export function moneyRounded(n: number): string {
   return `$${n.toLocaleString("en-CA", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
+/** Attendance record key: `${iso}-${startMinutes}-${coachId}-${memberName}` (memberName "" for a whole group slot). */
+export function slotKey(iso: string, start: number, coachId: string, name = ""): string {
+  return `${iso}-${start}-${coachId}-${name}`;
+}
+
 export function initialsOf(name: string): string {
   return name
     .split(" ")

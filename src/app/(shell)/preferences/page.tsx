@@ -8,11 +8,12 @@ import { XIcon, PlusIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useThemeStore } from "@/stores/theme";
-import { useAvailabilityStore, EMPTY_AVAILABILITY } from "@/stores/availability";
+import { useCoachAvailability } from "@/lib/useCoachAvailability";
 import { useCurrentCoach } from "@/lib/useCoaches";
+import { setWeeklyHours, addTimeOff, removeTimeOff, type WeeklyHours } from "@/server/schedule";
 import { DAYS_OF_WEEK } from "@/data/mock/coaches";
 import { clock, initialsOf, parseClock } from "@/lib/time";
-import type { TimeOffEntry } from "@/types";
+import type { DayOfWeek, TimeOffEntry } from "@/types";
 
 const TIME_OPTIONS: string[] = (() => {
   const out: string[] = [];
@@ -36,12 +37,8 @@ export default function CoachPreferencesPage() {
   const setTheme = useThemeStore((s) => s.set);
   const coach = useCurrentCoach();
   const coachId = coach?.id ?? "";
-  const avail = useAvailabilityStore((s) => s.byCoach[coachId]) ?? EMPTY_AVAILABILITY;
-  const toggleDayOn = useAvailabilityStore((s) => s.toggleDayOn);
-  const addShift = useAvailabilityStore((s) => s.addShift);
-  const updateShift = useAvailabilityStore((s) => s.updateShift);
-  const removeShift = useAvailabilityStore((s) => s.removeShift);
-  const setTimeOff = useAvailabilityStore((s) => s.setTimeOff);
+  const { availability, refetch } = useCoachAvailability(coachId);
+  const hours = availability.hours;
 
   const [saved, setSaved] = useState(false);
   const [flags, setFlags] = useState({ dayAhead: true, manualBooking: true, classJoin: true });
@@ -56,19 +53,55 @@ export default function CoachPreferencesPage() {
     <HeaderButton onClick={() => setSaved(true)}>{saved ? "Saved" : "Save preferences"}</HeaderButton>,
   );
 
-  const onDays = DAYS_OF_WEEK.filter((d) => avail.hours[d].on && avail.hours[d].shifts.length > 0);
-  const totalHours = onDays.reduce((a, d) => a + avail.hours[d].shifts.reduce((b, s) => b + (s.end - s.start), 0) / 60, 0);
+  const onDays = DAYS_OF_WEEK.filter((d) => hours[d].on && hours[d].shifts.length > 0);
+  const totalHours = onDays.reduce((a, d) => a + hours[d].shifts.reduce((b, s) => b + (s.end - s.start), 0) / 60, 0);
   const hoursSummary = onDays.length === 0 ? "No days set" : `${onDays.length} days · ${Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1)}h a week`;
 
-  function addTimeOff() {
+  async function persistHours(next: WeeklyHours) {
+    await setWeeklyHours(coachId, next);
+    refetch();
+  }
+
+  function toggleDayOn(day: DayOfWeek) {
+    const h = hours[day];
+    const on = !h.on;
+    const shifts = on && h.shifts.length === 0 ? [{ start: 540, end: 1020 }] : h.shifts;
+    persistHours({ ...hours, [day]: { on, shifts } });
+  }
+
+  function addShift(day: DayOfWeek) {
+    const h = hours[day];
+    const last = h.shifts[h.shifts.length - 1];
+    const start = last ? Math.min(1380, last.end + 60) : 540;
+    const end = Math.min(1440, start + 240);
+    persistHours({ ...hours, [day]: { on: true, shifts: [...h.shifts, { start, end }] } });
+  }
+
+  function updateShift(day: DayOfWeek, index: number, patch: Partial<{ start: number; end: number }>) {
+    const h = hours[day];
+    const shifts = h.shifts.map((s, i) => (i === index ? { ...s, ...patch } : s));
+    persistHours({ ...hours, [day]: { ...h, shifts } });
+  }
+
+  function removeShift(day: DayOfWeek, index: number) {
+    const h = hours[day];
+    const shifts = h.shifts.filter((_, i) => i !== index);
+    persistHours({ ...hours, [day]: { on: shifts.length > 0, shifts } });
+  }
+
+  async function handleAddTimeOff() {
     if (!offFrom || !coachId) return;
-    const entry: TimeOffEntry = { from: offFrom, to: offTo || offFrom, reason: offReasonText.trim() || "Time off", type: offType };
-    const next = [...avail.timeOff, entry].sort((a, b) => a.from.localeCompare(b.from));
-    setTimeOff(coachId, next);
+    await addTimeOff(coachId, { from: offFrom, to: offTo || offFrom, reason: offReasonText.trim() || "Time off", type: offType });
+    refetch();
     setOffFrom("");
     setOffTo("");
     setOffReasonText("");
     setSaved(false);
+  }
+
+  async function handleRemoveTimeOff(id: string) {
+    await removeTimeOff(id);
+    refetch();
   }
 
   if (coach === undefined) {
@@ -113,14 +146,14 @@ export default function CoachPreferencesPage() {
             </div>
             <div className="flex flex-col gap-2">
               {DAYS_OF_WEEK.map((d) => {
-                const h = avail.hours[d];
+                const h = hours[d];
                 const dayHours = h.shifts.reduce((a, s) => a + (s.end - s.start), 0) / 60;
                 return (
                   <div key={d} className="rounded-lg border border-divider px-2.5 py-2">
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => toggleDayOn(coachId, d)}
+                        onClick={() => toggleDayOn(d)}
                         className={`h-[30px] w-14 flex-none rounded-lg border text-[13px] ${
                           h.on ? "border-accent bg-row font-semibold" : "border-divider font-normal text-muted"
                         }`}
@@ -133,20 +166,20 @@ export default function CoachPreferencesPage() {
                             <div key={i} className="flex items-center gap-1.5">
                               <Select
                                 value={clock(s.start)}
-                                onChange={(v) => updateShift(coachId, d, i, { start: parseClock(v) })}
+                                onChange={(v) => updateShift(d, i, { start: parseClock(v) })}
                                 options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
                                 className="h-[30px] min-w-0 flex-1 rounded-lg px-1.5 text-[12.5px]"
                               />
                               <span className="flex-none text-xs text-muted">–</span>
                               <Select
                                 value={clock(s.end)}
-                                onChange={(v) => updateShift(coachId, d, i, { end: parseClock(v) })}
+                                onChange={(v) => updateShift(d, i, { end: parseClock(v) })}
                                 options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
                                 className="h-[30px] min-w-0 flex-1 rounded-lg px-1.5 text-[12.5px]"
                               />
                               <button
                                 type="button"
-                                onClick={() => removeShift(coachId, d, i)}
+                                onClick={() => removeShift(d, i)}
                                 title="Remove this time block"
                                 className="grid h-[26px] w-[26px] flex-none place-items-center rounded-md text-muted hover:bg-row hover:text-bad"
                               >
@@ -161,7 +194,7 @@ export default function CoachPreferencesPage() {
                       <div className="mt-1.5 flex items-center justify-between gap-2 pl-[60px]">
                         <button
                           type="button"
-                          onClick={() => addShift(coachId, d)}
+                          onClick={() => addShift(d)}
                           className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[12px] text-link hover:bg-row"
                         >
                           <PlusIcon size={11} />
@@ -189,8 +222,8 @@ export default function CoachPreferencesPage() {
               <span className="text-xs text-muted">Auto-approved</span>
             </div>
             <div className="flex flex-col gap-2">
-              {avail.timeOff.map((t, i) => (
-                <div key={i} className="flex items-center gap-3 rounded-lg bg-row px-3 py-2.5">
+              {availability.timeOff.map((t) => (
+                <div key={t.id} className="flex items-center gap-3 rounded-lg bg-row px-3 py-2.5">
                   <span className="h-[7px] w-[7px] flex-none rounded-full bg-accent" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[13.5px]">{fmtRange(t.from, t.to)}</div>
@@ -198,7 +231,7 @@ export default function CoachPreferencesPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setTimeOff(coachId, avail.timeOff.filter((_, j) => j !== i))}
+                    onClick={() => handleRemoveTimeOff(t.id)}
                     title="Remove"
                     className="grid h-7 w-7 flex-none place-items-center rounded-lg text-muted hover:bg-divider hover:text-bad"
                   >
@@ -206,7 +239,7 @@ export default function CoachPreferencesPage() {
                   </button>
                 </div>
               ))}
-              {avail.timeOff.length === 0 && <div className="px-0.5 py-2.5 text-[13px] text-muted">No time off booked.</div>}
+              {availability.timeOff.length === 0 && <div className="px-0.5 py-2.5 text-[13px] text-muted">No time off booked.</div>}
             </div>
 
             <div className="mt-3 grid grid-cols-2 gap-2.5">
@@ -254,7 +287,7 @@ export default function CoachPreferencesPage() {
             </div>
             <button
               type="button"
-              onClick={addTimeOff}
+              onClick={handleAddTimeOff}
               className="mt-3 h-[38px] rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent"
             >
               Block this time off
@@ -263,92 +296,92 @@ export default function CoachPreferencesPage() {
         </Card>
 
         <div className="flex flex-col gap-[18px]">
-        <Card className="flex flex-col gap-3.5 px-[22px] py-5">
-          <h5 className="text-[15.5px] font-semibold">Account</h5>
-          <div className="grid grid-cols-2 gap-3">
+          <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+            <h5 className="text-[15.5px] font-semibold">Account</h5>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">Display name</span>
+                <input key={coach.name} defaultValue={coach.name} className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11.5px] tracking-wider text-muted uppercase">Mobile</span>
+                <input placeholder="Not on file" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              </label>
+            </div>
             <label className="flex flex-col gap-1.5">
-              <span className="text-[11.5px] tracking-wider text-muted uppercase">Display name</span>
-              <input key={coach.name} defaultValue={coach.name} className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Email</span>
+              <input key={coach.email} defaultValue={coach.email} className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-[11.5px] tracking-wider text-muted uppercase">Mobile</span>
-              <input placeholder="Not on file" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Password</span>
+              <input type="password" defaultValue="••••••••" readOnly className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm tracking-[.14em]" />
             </label>
-          </div>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11.5px] tracking-wider text-muted uppercase">Email</span>
-            <input key={coach.email} defaultValue={coach.email} className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11.5px] tracking-wider text-muted uppercase">Password</span>
-            <input type="password" defaultValue="••••••••" readOnly className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm tracking-[.14em]" />
-          </label>
-          <div className="mt-0.5 flex flex-wrap gap-2">
-            <button type="button" className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">Change password</button>
-            <button type="button" className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">Reset password</button>
-            <button type="button" className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] text-bad hover:bg-row">Sign out</button>
-          </div>
-        </Card>
+            <div className="mt-0.5 flex flex-wrap gap-2">
+              <button type="button" className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">Change password</button>
+              <button type="button" className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">Reset password</button>
+              <button type="button" className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] text-bad hover:bg-row">Sign out</button>
+            </div>
+          </Card>
 
-        <Card className="px-[22px] py-5">
-          <h5 className="mb-1 text-[15.5px] font-semibold">My notifications</h5>
-          {[
-            { key: "dayAhead" as const, label: "Tomorrow's schedule", hint: "Sent the night before with my session list" },
-            { key: "manualBooking" as const, label: "New manual bookings", hint: "When a member books a session with me themselves" },
-            { key: "classJoin" as const, label: "Class sign-ups", hint: "When someone joins one of my classes" },
-          ].map((t) => (
-            <div key={t.key} className="flex items-center gap-3.5 border-b border-divider py-3 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <div className="text-[13.5px]">{t.label}</div>
-                <div className="text-pretty text-xs text-muted">{t.hint}</div>
+          <Card className="px-[22px] py-5">
+            <h5 className="mb-1 text-[15.5px] font-semibold">My notifications</h5>
+            {[
+              { key: "dayAhead" as const, label: "Tomorrow's schedule", hint: "Sent the night before with my session list" },
+              { key: "manualBooking" as const, label: "New manual bookings", hint: "When a member books a session with me themselves" },
+              { key: "classJoin" as const, label: "Class sign-ups", hint: "When someone joins one of my classes" },
+            ].map((t) => (
+              <div key={t.key} className="flex items-center gap-3.5 border-b border-divider py-3 last:border-b-0">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px]">{t.label}</div>
+                  <div className="text-pretty text-xs text-muted">{t.hint}</div>
+                </div>
+                <Toggle on={flags[t.key]} onClick={() => setFlags((f) => ({ ...f, [t.key]: !f[t.key] }))} label={t.label} />
               </div>
-              <Toggle on={flags[t.key]} onClick={() => setFlags((f) => ({ ...f, [t.key]: !f[t.key] }))} label={t.label} />
-            </div>
-          ))}
-        </Card>
+            ))}
+          </Card>
 
-        <Card className="flex flex-col gap-3.5 px-[22px] py-5">
-          <h5 className="text-[15.5px] font-semibold">Appearance</h5>
-          <div>
-            <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Theme</div>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(["light", "dark"] as const).map((t) => {
-                const on = t === theme;
-                return (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTheme(t)}
-                    className={`h-[38px] rounded-lg border text-[13.5px] capitalize hover:bg-row ${
-                      on ? "border-accent bg-row font-semibold" : "border-divider font-normal"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                );
-              })}
+          <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+            <h5 className="text-[15.5px] font-semibold">Appearance</h5>
+            <div>
+              <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Theme</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {(["light", "dark"] as const).map((t) => {
+                  const on = t === theme;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTheme(t)}
+                      className={`h-[38px] rounded-lg border text-[13.5px] capitalize hover:bg-row ${
+                        on ? "border-accent bg-row font-semibold" : "border-divider font-normal"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-1.5 text-pretty text-xs text-muted">Saved to this coach&apos;s profile and applied on every screen.</div>
             </div>
-            <div className="mt-1.5 text-pretty text-xs text-muted">Saved to this coach&apos;s profile and applied on every screen.</div>
-          </div>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11.5px] tracking-wider text-muted uppercase">Landing screen</span>
-            <Select
-              value={landing}
-              onChange={setLanding}
-              options={["Dashboard", "Schedule", "Members", "POS", "Reports"].map((v) => ({ value: v, label: v }))}
-              className="h-[38px] rounded-lg px-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11.5px] tracking-wider text-muted uppercase">Default calendar view</span>
-            <Select
-              value={calView}
-              onChange={setCalView}
-              options={["Day", "Week", "Month"].map((v) => ({ value: v, label: v }))}
-              className="h-[38px] rounded-lg px-2 text-sm"
-            />
-          </label>
-        </Card>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Landing screen</span>
+              <Select
+                value={landing}
+                onChange={setLanding}
+                options={["Dashboard", "Schedule", "Members", "POS", "Reports"].map((v) => ({ value: v, label: v }))}
+                className="h-[38px] rounded-lg px-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Default calendar view</span>
+              <Select
+                value={calView}
+                onChange={setCalView}
+                options={["Day", "Week", "Month"].map((v) => ({ value: v, label: v }))}
+                className="h-[38px] rounded-lg px-2 text-sm"
+              />
+            </label>
+          </Card>
         </div>
       </div>
     </div>

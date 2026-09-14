@@ -1,8 +1,7 @@
 "use client";
 
 import { useThemeStore } from "@/stores/theme";
-import { useBookingsStore } from "@/stores/bookings";
-import { occurrencesForDate } from "@/lib/scheduleEngine";
+import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
 import { addDays, clock, isoOf, mondayOf } from "@/lib/time";
 import { sessionTypeColor } from "@/data/mock/sessionTypes";
 import type { CoachId } from "@/types";
@@ -21,12 +20,13 @@ export function MonthGrid({
   onPickDay: (d: Date) => void;
 }) {
   const dark = useThemeStore((s) => s.theme === "dark");
-  const { bookings, series, moves, cancellations } = useBookingsStore();
 
   const firstOfMonth = new Date(monthAnchor.getFullYear(), monthAnchor.getMonth(), 1);
   const gridStart = mondayOf(firstOfMonth);
   const cells = Array.from({ length: 35 }, (_, i) => addDays(gridStart, i));
   const todayIso = isoOf(today);
+
+  const scheduleData = useScheduleRange(isoOf(cells[0]), isoOf(cells[34]), coachFilter === "all" ? undefined : coachFilter);
 
   return (
     <div className="min-w-0">
@@ -41,7 +41,7 @@ export function MonthGrid({
         {cells.map((date) => {
           const iso = isoOf(date);
           const inMonth = date.getMonth() === monthAnchor.getMonth();
-          const occ = occurrencesForDate(date, moves, bookings, series, cancellations).filter((o) => coachFilter === "all" || o.coach === coachFilter);
+          const occ = occurrencesOn(scheduleData, iso);
           const chips = occ.slice(0, 3);
           return (
             <button

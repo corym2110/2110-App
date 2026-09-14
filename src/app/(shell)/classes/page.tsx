@@ -1,20 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
-import { useBookingsStore } from "@/stores/bookings";
-import { useAttendanceStore } from "@/stores/attendance";
-import { useWaitlistStore } from "@/stores/waitlists";
 import { useThemeStore } from "@/stores/theme";
-import { occurrencesForDate } from "@/lib/scheduleEngine";
-import { addDays, clock, formatDateShort, formatDateLong, initialsOf, isoOf, mondayOf, startOfToday } from "@/lib/time";
+import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
+import { setAttendanceStatus, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist } from "@/server/schedule";
+import { addDays, clock, formatDateShort, formatDateLong, initialsOf, isoOf, mondayOf, slotKey, startOfToday } from "@/lib/time";
 import { capacityOf, sessionTypeColor } from "@/data/mock/sessionTypes";
 import { useMembers } from "@/lib/useMembers";
 import { useCoaches } from "@/lib/useCoaches";
-import type { SessionTypeName } from "@/types";
+import type { AttendanceStatus, SessionTypeName } from "@/types";
 
 const KINDS: SessionTypeName[] = ["Class", "Group Training"];
 
@@ -23,12 +21,9 @@ export default function ClassesPage() {
   const [kinds, setKinds] = useState<Record<string, boolean>>({ Class: true, "Group Training": true });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [addPick, setAddPick] = useState("");
+  const [, startTransition] = useTransition();
 
   const dark = useThemeStore((s) => s.theme === "dark");
-  const { bookings, series, moves, cancellations } = useBookingsStore();
-  const statuses = useAttendanceStore((s) => s.statuses);
-  const setStatus = useAttendanceStore((s) => s.setStatus);
-  const { waitlists, addToWaitlist, removeFromWaitlist, promoteFromWaitlist, classAdds, addToClass } = useWaitlistStore();
   const members = useMembers();
   const coaches = useCoaches();
   const coachName = (id: string) => coaches.find((c) => c.id === id)?.name ?? id;
@@ -36,17 +31,24 @@ export default function ClassesPage() {
   const weekStart = useMemo(() => addDays(mondayOf(startOfToday()), offset * 7), [offset]);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
+  const scheduleData = useScheduleRange(isoOf(weekStart), isoOf(addDays(weekStart, 6)));
+  const { attendance, waitlists, classAdds } = scheduleData;
+
   const dayGroups = days
-    .map((date) => {
-      const occ = occurrencesForDate(date, moves, bookings, series, cancellations).filter((o) => kinds[o.type]);
-      return { date, occ };
-    })
+    .map((date) => ({ date, occ: occurrencesOn(scheduleData, isoOf(date)).filter((o) => kinds[o.type]) }))
     .filter((g) => g.occ.length > 0);
 
-  let selected: ReturnType<typeof occurrencesForDate>[number] | undefined;
+  let selected: ReturnType<typeof occurrencesOn>[number] | undefined;
   for (const g of dayGroups) {
     const hit = g.occ.find((o) => o.key === selectedKey);
     if (hit) selected = hit;
+  }
+
+  function setStatus(key: string, iso: string, status: AttendanceStatus | null) {
+    startTransition(async () => {
+      await setAttendanceStatus(key, iso, status);
+      scheduleData.refetch();
+    });
   }
 
   return (
@@ -100,7 +102,7 @@ export default function ClassesPage() {
               const head = roster.length;
               const full = cap > 0 && head >= cap;
               const waiting = waitlists[o.key] ?? [];
-              const checkedIn = roster.filter((n) => statuses[`${o.iso}-${o.start}-${o.coach}-${n}`] === "Checked in").length;
+              const checkedIn = roster.filter((n) => attendance[slotKey(o.iso, o.start, o.coach, n)] === "Checked in").length;
               const color = sessionTypeColor(o.type, dark);
               return (
                 <button
@@ -170,14 +172,14 @@ export default function ClassesPage() {
           <div className="px-5 pt-4">
             <div className="flex flex-col gap-1.5">
               {[...(selected.roster ?? []), ...(classAdds[selected.key] ?? [])].map((n) => {
-                const key = `${selected.iso}-${selected.start}-${selected.coach}-${n}`;
-                const status = statuses[key];
+                const key = slotKey(selected!.iso, selected!.start, selected!.coach, n);
+                const status = attendance[key];
                 const member = members.find((m) => m.name === n);
                 return (
                   <div key={n} className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setStatus(key, status === "Checked in" ? null : "Checked in")}
+                      onClick={() => setStatus(key, selected!.iso, status === "Checked in" ? null : "Checked in")}
                       title="Check in"
                       className={`grid h-9 w-8 flex-none place-items-center rounded-[9px] border hover:bg-row ${
                         status === "Checked in" ? "border-ok bg-ok/15 text-ok" : "border-divider text-muted"
@@ -187,7 +189,7 @@ export default function ClassesPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setStatus(key, status === "No-show" ? null : "No-show")}
+                      onClick={() => setStatus(key, selected!.iso, status === "No-show" ? null : "No-show")}
                       title="No-show"
                       className={`grid h-9 w-8 flex-none place-items-center rounded-[9px] border hover:bg-row ${
                         status === "No-show" ? "border-bad bg-bad/10 text-bad" : "border-divider text-muted"
@@ -223,8 +225,12 @@ export default function ClassesPage() {
                   if (!addPick) return;
                   const cap = capacityOf(selected!.type, selected!.name);
                   const head = (selected!.roster ?? []).length + (classAdds[selected!.key] ?? []).length;
-                  if (cap > 0 && head >= cap) addToWaitlist(selected!.key, addPick);
-                  else addToClass(selected!.key, addPick);
+                  const pick = addPick;
+                  startTransition(async () => {
+                    if (cap > 0 && head >= cap) await addToWaitlist(selected!.key, pick);
+                    else await addToClass(selected!.key, pick);
+                    scheduleData.refetch();
+                  });
                   setAddPick("");
                 }}
                 className="h-9 flex-none rounded-[9px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent"
@@ -247,14 +253,14 @@ export default function ClassesPage() {
                       <span className="min-w-0 flex-1 truncate text-[13.5px]">{n}</span>
                       <button
                         type="button"
-                        onClick={() => promoteFromWaitlist(selected!.key, n)}
+                        onClick={() => startTransition(async () => { await promoteFromWaitlist(selected!.key, n); scheduleData.refetch(); })}
                         className="h-[26px] flex-none rounded-full border border-divider px-2.5 text-xs hover:bg-row"
                       >
                         Book in
                       </button>
                       <button
                         type="button"
-                        onClick={() => removeFromWaitlist(selected!.key, n)}
+                        onClick={() => startTransition(async () => { await removeFromWaitlist(selected!.key, n); scheduleData.refetch(); })}
                         title="Remove from waitlist"
                         className="grid h-[26px] w-[26px] flex-none place-items-center rounded-md text-muted hover:bg-row hover:text-fg"
                       >
