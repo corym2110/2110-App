@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useClerk } from "@clerk/nextjs";
 import { HeaderButton } from "@/components/ui/HeaderButton";
 import { Card } from "@/components/ui/Card";
 import { Toggle } from "@/components/ui/Toggle";
@@ -33,6 +35,8 @@ function fmtRange(from: string, to: string): string {
 }
 
 export default function CoachPreferencesPage() {
+  const router = useRouter();
+  const { signOut, openUserProfile } = useClerk();
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.set);
   const coach = useCurrentCoach();
@@ -317,9 +321,19 @@ export default function CoachPreferencesPage() {
               <input type="password" defaultValue="••••••••" readOnly className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm tracking-[.14em]" />
             </label>
             <div className="mt-0.5 flex flex-wrap gap-2">
-              <button type="button" className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">Change password</button>
-              <button type="button" className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">Reset password</button>
-              <button type="button" className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] text-bad hover:bg-row">Sign out</button>
+              <button type="button" onClick={() => openUserProfile()} className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
+                Change password
+              </button>
+              <button type="button" onClick={() => openUserProfile()} className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
+                Reset password
+              </button>
+              <button
+                type="button"
+                onClick={() => signOut(() => router.push("/sign-in"))}
+                className="h-[38px] rounded-full border border-divider px-4 text-[13.5px] text-bad hover:bg-row"
+              >
+                Sign out
+              </button>
             </div>
           </Card>
 
