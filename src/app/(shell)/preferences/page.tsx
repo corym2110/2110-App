@@ -8,9 +8,10 @@ import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useThemeStore } from "@/stores/theme";
-import { useAvailabilityStore } from "@/stores/availability";
+import { useAvailabilityStore, EMPTY_AVAILABILITY } from "@/stores/availability";
+import { useCurrentCoach } from "@/lib/useCoaches";
 import { DAYS_OF_WEEK } from "@/data/mock/coaches";
-import { clock, parseClock } from "@/lib/time";
+import { clock, initialsOf, parseClock } from "@/lib/time";
 import type { TimeOffEntry } from "@/types";
 
 const TIME_OPTIONS: string[] = (() => {
@@ -33,7 +34,9 @@ function fmtRange(from: string, to: string): string {
 export default function CoachPreferencesPage() {
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.set);
-  const avail = useAvailabilityStore((s) => s.byCoach.CM);
+  const coach = useCurrentCoach();
+  const coachId = coach?.id ?? "";
+  const avail = useAvailabilityStore((s) => s.byCoach[coachId]) ?? EMPTY_AVAILABILITY;
   const setDayHours = useAvailabilityStore((s) => s.setDayHours);
   const setTimeOff = useAvailabilityStore((s) => s.setTimeOff);
 
@@ -55,29 +58,44 @@ export default function CoachPreferencesPage() {
   const hoursSummary = onDays.length === 0 ? "No days set" : `${onDays.length} days · ${Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1)}h a week`;
 
   function addTimeOff() {
-    if (!offFrom) return;
+    if (!offFrom || !coachId) return;
     const entry: TimeOffEntry = { from: offFrom, to: offTo || offFrom, reason: offReasonText.trim() || "Time off", type: offType };
     const next = [...avail.timeOff, entry].sort((a, b) => a.from.localeCompare(b.from));
-    setTimeOff("CM", next);
+    setTimeOff(coachId, next);
     setOffFrom("");
     setOffTo("");
     setOffReasonText("");
     setSaved(false);
   }
 
+  if (coach === undefined) {
+    return <div className="py-10 text-center text-[13.5px] text-muted">Loading your preferences…</div>;
+  }
+  if (coach === null) {
+    return (
+      <div className="py-10 text-center text-[13.5px] text-pretty text-muted">
+        Your account isn&apos;t linked to a coach record yet — ask an admin to add you under Settings → Staff with this
+        same email address.
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-[18px]">
       <Card className="flex flex-wrap items-start gap-[18px] px-6 py-[22px]">
         <div className="grid h-16 w-16 flex-none place-items-center rounded-full bg-accent-deep text-[21px] font-semibold text-[#e7e5fe]">
-          CM
+          {initialsOf(coach.name)}
         </div>
         <div className="min-w-[220px] flex-1">
-          <h2 className="m-0 text-[27px] font-medium tracking-tight">Cory Martin</h2>
-          <div className="mt-0.5 text-[13.5px] text-muted">Facility Supervisor · cory@2110fitness.com</div>
+          <h2 className="m-0 text-[27px] font-medium tracking-tight">{coach.name}</h2>
+          <div className="mt-0.5 text-[13.5px] text-muted">
+            {coach.role} · {coach.email}
+          </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-full bg-row px-2.5 py-1 text-[12.5px]">Full access</span>
-            <span className="rounded-full bg-row px-2.5 py-1 text-[12.5px] text-muted">48 sessions this week</span>
-            <span className="rounded-full bg-row px-2.5 py-1 text-[12.5px] text-muted">Staff since Mar 2021</span>
+            <span className="rounded-full bg-row px-2.5 py-1 text-[12.5px]">{coach.isAdmin ? "Full access" : "Coach access"}</span>
+            <span className={`rounded-full px-2.5 py-1 text-[12.5px] ${coach.active ? "bg-row text-muted" : "bg-bad/10 text-bad"}`}>
+              {coach.active ? "Active" : "Inactive"}
+            </span>
           </div>
         </div>
       </Card>
@@ -98,7 +116,7 @@ export default function CoachPreferencesPage() {
                   <Fragment key={d}>
                     <button
                       type="button"
-                      onClick={() => setDayHours("CM", d, { on: !h.on })}
+                      onClick={() => setDayHours(coachId, d, { on: !h.on })}
                       className={`h-[34px] rounded-lg border text-[13px] ${
                         h.on ? "border-accent bg-row font-semibold" : "border-divider font-normal text-muted"
                       }`}
@@ -110,7 +128,7 @@ export default function CoachPreferencesPage() {
                       disabled={!h.on}
                       onChange={(v) => {
                         const mins = parseClock(v);
-                        setDayHours("CM", d, { start: mins, end: Math.max(mins + 60, h.end) });
+                        setDayHours(coachId, d, { start: mins, end: Math.max(mins + 60, h.end) });
                       }}
                       options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
                       className="h-[34px] min-w-0 rounded-lg px-1.5 text-[13px]"
@@ -123,7 +141,7 @@ export default function CoachPreferencesPage() {
                       disabled={!h.on}
                       onChange={(v) => {
                         const mins = parseClock(v);
-                        setDayHours("CM", d, { end: mins, start: Math.min(h.start, mins - 60) });
+                        setDayHours(coachId, d, { end: mins, start: Math.min(h.start, mins - 60) });
                       }}
                       options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
                       className="h-[34px] min-w-0 rounded-lg px-1.5 text-[13px]"
@@ -155,7 +173,7 @@ export default function CoachPreferencesPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setTimeOff("CM", avail.timeOff.filter((_, j) => j !== i))}
+                    onClick={() => setTimeOff(coachId, avail.timeOff.filter((_, j) => j !== i))}
                     title="Remove"
                     className="grid h-7 w-7 flex-none place-items-center rounded-lg text-muted hover:bg-divider hover:text-bad"
                   >
@@ -224,16 +242,16 @@ export default function CoachPreferencesPage() {
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Display name</span>
-              <input defaultValue="Cory Martin" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              <input key={coach.name} defaultValue={coach.name} className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Mobile</span>
-              <input defaultValue="+1 403 555 8801" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              <input placeholder="Not on file" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
             </label>
           </div>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11.5px] tracking-wider text-muted uppercase">Email</span>
-            <input defaultValue="cory@2110fitness.com" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+            <input key={coach.email} defaultValue={coach.email} className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11.5px] tracking-wider text-muted uppercase">Password</span>

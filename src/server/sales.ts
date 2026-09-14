@@ -77,14 +77,14 @@ export interface RealReportsSummary {
   outstandingBalance: number;
 }
 
-export async function getRealReportsSummary(range: ReportRangeKey): Promise<RealReportsSummary> {
+export async function getRealReportsSummary(range: ReportRangeKey, coachId?: string): Promise<RealReportsSummary> {
   const now = new Date();
   const since = rangeStart(range, now);
 
   const [sales, newMembers, unpaid] = await Promise.all([
-    db.sale.findMany({ where: { createdAt: { gte: since } }, include: { coach: true } }),
-    db.member.count({ where: { createdAt: { gte: since } } }),
-    db.sale.findMany({ where: { paid: false } }),
+    db.sale.findMany({ where: { createdAt: { gte: since }, ...(coachId ? { coachId } : {}) }, include: { coach: true } }),
+    db.member.count({ where: { createdAt: { gte: since }, ...(coachId ? { coachId } : {}) } }),
+    db.sale.findMany({ where: { paid: false, ...(coachId ? { coachId } : {}) } }),
   ]);
 
   const paid = sales.filter((s) => s.paid);

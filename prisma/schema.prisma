@@ -11,6 +11,7 @@ model Coach {
   name    String
   email   String   @unique
   role    String
+  isAdmin Boolean  @default(false)
   active  Boolean  @default(true)
   members Member[]
   sales   Sale[]

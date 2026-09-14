@@ -11,6 +11,7 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState(ROLE_OPTIONS[0]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -21,7 +22,7 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
     setError(null);
     startTransition(async () => {
       try {
-        await addCoach({ name, email, role });
+        await addCoach({ name, email, role, isAdmin });
         onAdded();
         onClose();
       } catch {
@@ -68,6 +69,11 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
         <label className="flex flex-col gap-1.5">
           <span className="text-[11.5px] tracking-wider text-muted uppercase">Role</span>
           <Select value={role} onChange={setRole} options={ROLE_OPTIONS.map((r) => ({ value: r, label: r }))} className="h-10 rounded-lg px-2.5 text-sm" />
+        </label>
+
+        <label className="flex items-center gap-2 text-[13px]">
+          <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} className="h-4 w-4" />
+          Admin access — can see Settings and full business reports
         </label>
 
         {error && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">{error}</div>}

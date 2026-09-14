@@ -7,6 +7,7 @@ import { HeaderButton } from "@/components/ui/HeaderButton";
 import { ExportIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useMembers } from "@/lib/useMembers";
+import { useCurrentCoach } from "@/lib/useCoaches";
 import { getRealReportsSummary, type RealReportsSummary, type ReportRangeKey } from "@/server/sales";
 import { moneyRounded, money } from "@/lib/time";
 
@@ -35,17 +36,23 @@ export default function ReportsPage() {
   const [exported, setExported] = useState<string | null>(null);
   const [summary, setSummary] = useState<RealReportsSummary>(EMPTY_SUMMARY);
   const members = useMembers();
-  const followUp = members.filter((m) => m.balance > 0).sort((a, b) => b.balance - a.balance).slice(0, 6);
+  const coach = useCurrentCoach();
+  const isAdmin = coach?.isAdmin ?? false;
+  const followUp = members
+    .filter((m) => m.balance > 0 && (isAdmin || m.coach === coach?.name))
+    .sort((a, b) => b.balance - a.balance)
+    .slice(0, 6);
 
   useEffect(() => {
+    if (coach === undefined) return; // still resolving who's signed in
     let cancelled = false;
-    getRealReportsSummary(range).then((s) => {
+    getRealReportsSummary(range, isAdmin ? undefined : coach?.id).then((s) => {
       if (!cancelled) setSummary(s);
     });
     return () => {
       cancelled = true;
     };
-  }, [range]);
+  }, [range, coach, isAdmin]);
 
   useHeaderAction(
     <div className="relative flex-none">
@@ -89,8 +96,10 @@ export default function ReportsPage() {
     <div className="flex flex-col gap-[18px]">
       <div className="flex flex-wrap items-end justify-between gap-5">
         <div>
-          <h2 className="m-0 mb-0.5 text-[28px] font-medium tracking-tight">Reports</h2>
-          <div className="text-[13.5px] text-muted">{RANGE_LABEL[range]} · real data from sales and members</div>
+          <h2 className="m-0 mb-0.5 text-[28px] font-medium tracking-tight">{isAdmin ? "Reports" : "My revenue"}</h2>
+          <div className="text-[13.5px] text-muted">
+            {RANGE_LABEL[range]} · {isAdmin ? "real data from sales and members" : "your sales and clients only"}
+          </div>
         </div>
         <div className="ml-auto flex flex-wrap gap-1 rounded-[11px] border border-divider p-1">
           {RANGES.map((r) => (
@@ -122,7 +131,7 @@ export default function ReportsPage() {
           <div className={`mt-1.5 text-[30px] font-semibold tabular-nums tracking-tight ${summary.outstandingBalance > 0 ? "text-bad" : ""}`}>
             {moneyRounded(summary.outstandingBalance)}
           </div>
-          <div className="mt-0.5 text-[12.5px] text-muted">across all members, right now</div>
+          <div className="mt-0.5 text-[12.5px] text-muted">{isAdmin ? "across all members, right now" : "across your clients, right now"}</div>
         </Card>
       </div>
 
@@ -167,25 +176,27 @@ export default function ReportsPage() {
           ))}
         </Card>
 
-        <Card className="px-[22px] py-5">
-          <div className="mb-1.5 flex items-baseline justify-between gap-3.5">
-            <h5 className="text-[15.5px] font-semibold">Coach revenue</h5>
-            <Link href="/schedule" className="text-[13px] text-link hover:text-link-hover">
-              Open schedule
-            </Link>
-          </div>
-          <div className="grid grid-cols-[minmax(0,1.4fr)_92px] gap-3 border-b border-divider px-0.5 py-2.5 text-[11px] tracking-wider text-muted uppercase">
-            <span>Coach</span>
-            <span className="text-right">Revenue</span>
-          </div>
-          {summary.coachShare.length === 0 && <div className="py-6 text-center text-[13.5px] text-muted">No coach-attributed sales yet.</div>}
-          {summary.coachShare.map((c) => (
-            <div key={c.coachId} className="grid grid-cols-[minmax(0,1.4fr)_92px] items-center gap-3 border-b border-divider py-3 last:border-b-0">
-              <span className="min-w-0 truncate text-[13.5px]">{c.name}</span>
-              <span className="text-right text-[13.5px] font-medium tabular-nums">{moneyRounded(c.total)}</span>
+        {isAdmin && (
+          <Card className="px-[22px] py-5">
+            <div className="mb-1.5 flex items-baseline justify-between gap-3.5">
+              <h5 className="text-[15.5px] font-semibold">Coach revenue</h5>
+              <Link href="/schedule" className="text-[13px] text-link hover:text-link-hover">
+                Open schedule
+              </Link>
             </div>
-          ))}
-        </Card>
+            <div className="grid grid-cols-[minmax(0,1.4fr)_92px] gap-3 border-b border-divider px-0.5 py-2.5 text-[11px] tracking-wider text-muted uppercase">
+              <span>Coach</span>
+              <span className="text-right">Revenue</span>
+            </div>
+            {summary.coachShare.length === 0 && <div className="py-6 text-center text-[13.5px] text-muted">No coach-attributed sales yet.</div>}
+            {summary.coachShare.map((c) => (
+              <div key={c.coachId} className="grid grid-cols-[minmax(0,1.4fr)_92px] items-center gap-3 border-b border-divider py-3 last:border-b-0">
+                <span className="min-w-0 truncate text-[13.5px]">{c.name}</span>
+                <span className="text-right text-[13.5px] font-medium tabular-nums">{moneyRounded(c.total)}</span>
+              </div>
+            ))}
+          </Card>
+        )}
 
         <Card className="px-[22px] py-5">
           <div className="mb-1.5 flex items-baseline justify-between gap-3.5">

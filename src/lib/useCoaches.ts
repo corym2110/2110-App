@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getCoaches, type CoachRow } from "@/server/coaches";
+import { getCoaches, getCurrentCoach, type CoachRow } from "@/server/coaches";
 
 /** Real coach roster from the database, for client components that need it (pickers, filters, staff list). */
 export function useCoaches(): CoachRow[] {
@@ -18,6 +18,26 @@ export function useCoaches(): CoachRow[] {
   }, []);
 
   return coaches;
+}
+
+/**
+ * The coach record for the signed-in user, or `undefined` while still loading and `null` once loaded
+ * if there's no match (their Clerk email isn't a coach). `coach?.isAdmin` gates admin-only UI/routes.
+ */
+export function useCurrentCoach(): CoachRow | null | undefined {
+  const [coach, setCoach] = useState<CoachRow | null | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentCoach().then((row) => {
+      if (!cancelled) setCoach(row);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return coach;
 }
 
 /** Same as useCoaches(), but also returns a refetch() for callers that mutate the coach list themselves. */

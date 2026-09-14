@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton, useUser } from "@clerk/nextjs";
 import { useUIStore } from "@/stores/ui";
+import { useCurrentCoach } from "@/lib/useCoaches";
 import {
   DashboardIcon,
   ScheduleIcon,
@@ -27,6 +28,7 @@ export function Sidebar() {
   const collapsed = useUIStore((s) => s.collapsed);
   const pathname = usePathname();
   const { user } = useUser();
+  const coach = useCurrentCoach();
   const width = collapsed ? 76 : 232;
   const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Coach";
 
@@ -63,15 +65,17 @@ export function Sidebar() {
       <div className="flex-1" />
 
       <div className="flex flex-col gap-0.5 border-t border-white/12 pt-3">
-        <Link
-          href="/settings"
-          className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm overflow-hidden ${
-            collapsed ? "justify-center" : ""
-          } ${pathname === "/settings" ? "bg-accent text-on-accent font-semibold" : "text-white/66 hover:bg-white/8 hover:text-white"}`}
-        >
-          <SettingsIcon size={17} className="flex-none" />
-          {!collapsed && <span className="whitespace-nowrap">Settings</span>}
-        </Link>
+        {coach?.isAdmin && (
+          <Link
+            href="/settings"
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm overflow-hidden ${
+              collapsed ? "justify-center" : ""
+            } ${pathname === "/settings" ? "bg-accent text-on-accent font-semibold" : "text-white/66 hover:bg-white/8 hover:text-white"}`}
+          >
+            <SettingsIcon size={17} className="flex-none" />
+            {!collapsed && <span className="whitespace-nowrap">Settings</span>}
+          </Link>
+        )}
         <div className={`mt-1 flex items-center gap-2.5 rounded-xl px-3 py-2.5 overflow-hidden ${collapsed ? "justify-center" : ""}`}>
           <UserButton
             appearance={{
@@ -81,7 +85,7 @@ export function Sidebar() {
           {!collapsed && (
             <Link href="/preferences" className="min-w-0 hover:opacity-80">
               <div className="truncate text-[13.5px] font-medium">{displayName}</div>
-              <div className="text-[11.5px] text-white/55">Facility Supervisor</div>
+              <div className="text-[11.5px] text-white/55">{coach ? `${coach.role}${coach.isAdmin ? " · Admin" : ""}` : "Coach"}</div>
             </Link>
           )}
         </div>
