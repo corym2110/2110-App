@@ -31,7 +31,6 @@ async function main() {
         gender: "Prefer not to say",
         plan: member.plan,
         since: member.since,
-        lastSession: member.lastSession,
         coachId: coachIdByName.get(member.coach),
       },
       update: {
@@ -41,7 +40,6 @@ async function main() {
         phone: member.phone,
         plan: member.plan,
         since: member.since,
-        lastSession: member.lastSession,
         coachId: coachIdByName.get(member.coach),
       },
     });

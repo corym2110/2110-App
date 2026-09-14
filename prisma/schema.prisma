@@ -111,7 +111,6 @@ model Member {
   province      String?
   plan          String          @default("No plan yet")
   since         String
-  lastSession   String
   coachId       String?
   coach         Coach?          @relation(fields: [coachId], references: [id])
   payerOf       SharedAccount[] @relation("Payer")

@@ -93,6 +93,50 @@ export async function getOccurrencesForDate(iso: string, coachId?: string): Prom
   return byIso[iso] ?? [];
 }
 
+/** Most recent past-or-today occurrence (date + start time) for each name, from real bookings and
+    recurring series alike — used to show a member's real "last session" instead of a fixed string. */
+export async function getLastSessionByName(names: string[]): Promise<Record<string, { iso: string; start: number }>> {
+  if (names.length === 0) return {};
+  const todayIso = isoOf(new Date());
+
+  const [bookings, seriesList] = await Promise.all([
+    db.booking.findMany({
+      where: { name: { in: names }, iso: { lte: todayIso } },
+      orderBy: [{ iso: "desc" }, { start: "desc" }],
+      select: { name: true, iso: true, start: true },
+    }),
+    db.recurringSeries.findMany({ where: { clientName: { in: names }, fromIso: { lte: todayIso } } }),
+  ]);
+
+  const result: Record<string, { iso: string; start: number }> = {};
+  for (const b of bookings) {
+    if (!result[b.name]) result[b.name] = { iso: b.iso, start: b.start };
+  }
+
+  for (const s of seriesList) {
+    const days = s.days as Partial<Record<DayOfWeek, number>>;
+    const endIso = s.toIso && s.toIso < todayIso ? s.toIso : todayIso;
+    let cursor = new Date(`${endIso}T00:00:00`);
+    const floor = new Date(`${s.fromIso}T00:00:00`);
+    let found: { iso: string; start: number } | null = null;
+    for (let i = 0; i < 400 && cursor >= floor && !found; i++) {
+      const iso = isoOf(cursor);
+      const label = DOW_LABELS[dowIndex(cursor)];
+      const start = days[label];
+      if (start != null && !s.excludedDates.includes(iso)) found = { iso, start };
+      cursor = addDays(cursor, -1);
+    }
+    if (found) {
+      const existing = result[s.clientName];
+      if (!existing || found.iso > existing.iso || (found.iso === existing.iso && found.start > existing.start)) {
+        result[s.clientName] = found;
+      }
+    }
+  }
+
+  return result;
+}
+
 export interface NewBookingInput {
   iso: string;
   start: number;

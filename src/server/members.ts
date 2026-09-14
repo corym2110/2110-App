@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
+import { getLastSessionByName } from "./schedule";
+import { clock, formatDateShort } from "@/lib/time";
 import type { Member } from "@/types";
 
 interface MemberRow {
@@ -17,7 +19,6 @@ interface MemberRow {
   province: string | null;
   plan: string;
   since: string;
-  lastSession: string;
   coach: { name: string } | null;
   sales: { total: unknown }[];
 }
@@ -29,7 +30,13 @@ function fullName(row: { firstName: string; lastName: string }): string {
 /** Balance due is computed live from unpaid sales — there's no stored balance column to drift out of sync. */
 const UNPAID_SALES_INCLUDE = { where: { paid: false }, select: { total: true } } as const;
 
-function toMember(row: MemberRow): Member {
+/** "Last session" is computed live from real bookings/recurring series — same reasoning as balance above. */
+function formatLastSession(hit: { iso: string; start: number } | undefined): string {
+  if (!hit) return "No sessions yet";
+  return `${formatDateShort(new Date(`${hit.iso}T00:00:00`))} · ${clock(hit.start)}`;
+}
+
+function toMember(row: MemberRow, lastSession: string): Member {
   const balance = row.sales.reduce((a, s) => a + Number(s.total), 0);
   return {
     id: row.id,
@@ -42,7 +49,7 @@ function toMember(row: MemberRow): Member {
     plan: row.plan,
     balance,
     since: row.since,
-    lastSession: row.lastSession,
+    lastSession,
     coach: row.coach?.name ?? "Unassigned",
     address: row.address ?? undefined,
     postalCode: row.postalCode ?? undefined,
@@ -56,12 +63,15 @@ export async function getMembers(): Promise<Member[]> {
     include: { coach: true, sales: UNPAID_SALES_INCLUDE },
     orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
   });
-  return rows.map(toMember);
+  const lastSessions = await getLastSessionByName(rows.map(fullName));
+  return rows.map((row) => toMember(row, formatLastSession(lastSessions[fullName(row)])));
 }
 
 export async function getMemberById(id: string): Promise<Member | null> {
   const row = await db.member.findUnique({ where: { id }, include: { coach: true, sales: UNPAID_SALES_INCLUDE } });
-  return row ? toMember(row) : null;
+  if (!row) return null;
+  const lastSessions = await getLastSessionByName([fullName(row)]);
+  return toMember(row, formatLastSession(lastSessions[fullName(row)]));
 }
 
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -104,7 +114,6 @@ export async function addMember(input: NewMemberInput): Promise<string> {
       province: input.province?.trim() || undefined,
       plan: "No plan yet",
       since: `${MONTHS_SHORT[now.getMonth()]} ${now.getFullYear()}`,
-      lastSession: "No sessions yet",
       coachId: coach?.id,
     },
   });
