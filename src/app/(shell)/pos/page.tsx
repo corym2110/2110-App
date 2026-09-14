@@ -13,7 +13,7 @@ import { useCoaches } from "@/lib/useCoaches";
 import { getSharedAccountLinks, type SharedAccountLink } from "@/server/members";
 import { createSale } from "@/server/sales";
 import { CATALOG, matchProduct } from "@/data/mock/catalog";
-import { sessionTypeColor, SHORT_LABEL } from "@/data/mock/sessionTypes";
+import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { useThemeStore } from "@/stores/theme";
 import { money } from "@/lib/time";
 import type { Product } from "@/types";
@@ -164,7 +164,7 @@ function POSInner() {
                       </span>
                     )}
                     <span className="text-[10.5px] font-semibold tracking-wide uppercase" style={color ? { color } : undefined}>
-                      {p.sessionType ? SHORT_LABEL[p.sessionType] : p.category}
+                      {p.sessionType ? shortLabel(p.sessionType) : p.category}
                     </span>
                     <span className="line-clamp-2 flex-1 text-pretty text-sm font-medium">{p.name}</span>
                     <span className="flex items-baseline justify-between gap-2">

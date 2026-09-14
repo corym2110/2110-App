@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { SESSION_TYPES, capacityOf, sessionTypeByName } from "@/data/mock/sessionTypes";
+import { capacityOf } from "@/data/mock/sessionTypes";
+import { useSessionTypes } from "@/lib/useSessionTypes";
 import { useAvailabilityForCoaches } from "@/lib/useCoachAvailability";
 import { addBooking, addSeries, cancelOccurrence, type Occurrence } from "@/server/schedule";
 import { offReason } from "@/lib/availability";
@@ -37,6 +38,7 @@ export function BookingDialog({
   dayOccurrences: Occurrence[];
   editing?: Occurrence;
 }) {
+  const sessionTypes = useSessionTypes();
   const [type, setType] = useState<SessionTypeName>(editing?.type ?? "Personal Training");
   // Coaches can still be loading when this dialog first opens; falling back to coaches[0] here
   // (rather than only at mount) means we still land on a real coach once they arrive, instead of
@@ -71,14 +73,15 @@ export function BookingDialog({
     });
   }
 
-  const duration = sessionTypeByName(type).duration;
+  const selectedDef = sessionTypes.find((t) => t.name === type);
+  const duration = selectedDef?.duration ?? 60;
   const warn = offReason(availByCoach[coach], date, time, duration);
-  const cap = capacityOf(type);
+  const cap = capacityOf(type, client.trim(), selectedDef?.capacity ?? 0);
   const existing = dayOccurrences.filter((o) => o.start === time && o.coach === coach && o.type === type && o.key !== editing?.key);
   const head = existing.reduce((a, o) => a + (o.roster?.length ?? 1), 0);
   const full = cap > 0 && head >= cap;
 
-  const canRecur = !editing && (type === "Personal Training" || type === "Group Training");
+  const canRecur = !editing && (selectedDef?.recurring ?? false);
   const selectedDays = DOW_LABELS.filter((d) => recurDays[d] != null);
   const recurReady = !recur || selectedDays.length > 0;
 
@@ -88,11 +91,13 @@ export function BookingDialog({
     if (recur && canRecur && selectedDays.length === 0) return;
 
     startTransition(async () => {
+      const capacity = selectedDef?.capacity ?? 0;
+
       if (editing) {
         // Cancel the original (deletes a one-off booking outright, or excludes just this date
         // from its recurring series) then create the edited version as a fresh one-off booking.
         await cancelOccurrence(editing.sourceId, editing.key);
-        await addBooking({ iso, start: time, duration, type, coachId: coach, name: client.trim() });
+        await addBooking({ iso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
         onSaved();
         onClose();
         return;
@@ -102,6 +107,7 @@ export function BookingDialog({
         await addSeries({
           clientName: client.trim(),
           type,
+          capacity,
           coachId: coach,
           duration,
           days: recurDays,
@@ -109,7 +115,7 @@ export function BookingDialog({
           toIso: endMode === "weeks" ? isoOf(addDays(date, endWeeks * 7)) : undefined,
         });
       } else {
-        await addBooking({ iso, start: time, duration, type, coachId: coach, name: client.trim() });
+        await addBooking({ iso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
       }
       onSaved();
       onClose();
@@ -136,7 +142,7 @@ export function BookingDialog({
           <Select
             value={type}
             onChange={(v) => setType(v as SessionTypeName)}
-            options={SESSION_TYPES.map((t) => ({ value: t.name, label: `${t.name} · ${t.duration} min` }))}
+            options={sessionTypes.map((t) => ({ value: t.name, label: `${t.name} · ${t.duration} min` }))}
             className="h-10 rounded-lg px-2.5 text-sm"
           />
         </label>

@@ -5,7 +5,7 @@ import type { Occurrence } from "@/server/schedule";
 import { layoutLanes } from "@/lib/layoutLanes";
 import { offReason } from "@/lib/availability";
 import { clock } from "@/lib/time";
-import { sessionTypeColor, capacityOf, SHORT_LABEL } from "@/data/mock/sessionTypes";
+import { sessionTypeColor, capacityOf, shortLabel } from "@/data/mock/sessionTypes";
 
 export const DAY_START = 360;
 export const DAY_END = 1200;
@@ -106,7 +106,7 @@ export function DayColumn({
       {laned.map(({ item: o, lane, lanes }) => {
         const color = sessionTypeColor(o.type, dark);
         const height = heightFor(o.duration);
-        const cap = capacityOf(o.type, o.name);
+        const cap = capacityOf(o.type, o.name, o.capacity);
         const head = o.roster?.length ?? 0;
         const full = cap > 0 && head >= cap;
         const selected = selectedKey === o.key;
@@ -134,7 +134,7 @@ export function DayColumn({
             <div className={`h-full ${compact ? "flex items-center justify-center px-1" : "px-1.5 py-1"}`}>
               {!compact && (
                 <div className="truncate text-[11px] font-semibold" style={{ color }}>
-                  {SHORT_LABEL[o.type]}
+                  {shortLabel(o.type)}
                 </div>
               )}
               <div className={`truncate ${compact ? "text-[10px]" : "text-[11.5px]"}`}>

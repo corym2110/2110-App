@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import { HeaderButton } from "@/components/ui/HeaderButton";
@@ -13,9 +13,12 @@ import { useThemeStore } from "@/stores/theme";
 import { useCoachAvailability } from "@/lib/useCoachAvailability";
 import { useCurrentCoach } from "@/lib/useCoaches";
 import { setWeeklyHours, addTimeOff, removeTimeOff, type WeeklyHours } from "@/server/schedule";
+import { updateCoachPreferences } from "@/server/coaches";
 import { DAYS_OF_WEEK } from "@/data/mock/coaches";
 import { clock, initialsOf, parseClock } from "@/lib/time";
 import type { DayOfWeek, TimeOffEntry } from "@/types";
+
+const DEFAULT_FLAGS = { dayAhead: true, manualBooking: true, classJoin: true };
 
 const TIME_OPTIONS: string[] = (() => {
   const out: string[] = [];
@@ -45,16 +48,35 @@ export default function CoachPreferencesPage() {
   const hours = availability.hours;
 
   const [saved, setSaved] = useState(false);
-  const [flags, setFlags] = useState({ dayAhead: true, manualBooking: true, classJoin: true });
-  const [landing, setLanding] = useState("Dashboard");
-  const [calView, setCalView] = useState("Week");
+  const [isSaving, startSaving] = useTransition();
+  const [flagsOverride, setFlagsOverride] = useState<typeof DEFAULT_FLAGS | null>(null);
+  const flags = flagsOverride ?? coach?.notifyFlags ?? DEFAULT_FLAGS;
+  const [landingOverride, setLandingOverride] = useState<string | null>(null);
+  const landing = landingOverride ?? coach?.landing ?? "Dashboard";
+  const [calViewOverride, setCalViewOverride] = useState<string | null>(null);
+  const calView = calViewOverride ?? coach?.calendarView ?? "Week";
   const [offFrom, setOffFrom] = useState("");
   const [offTo, setOffTo] = useState("");
   const [offReasonText, setOffReasonText] = useState("");
   const [offType, setOffType] = useState<TimeOffEntry["type"]>("Full days");
 
+  function toggleFlag(key: keyof typeof DEFAULT_FLAGS) {
+    setFlagsOverride({ ...flags, [key]: !flags[key] });
+    setSaved(false);
+  }
+
+  function savePreferences() {
+    if (!coachId) return;
+    startSaving(async () => {
+      await updateCoachPreferences(coachId, { notifyFlags: flags, landing, calendarView: calView });
+      setSaved(true);
+    });
+  }
+
   useHeaderAction(
-    <HeaderButton onClick={() => setSaved(true)}>{saved ? "Saved" : "Save preferences"}</HeaderButton>,
+    <HeaderButton onClick={savePreferences} disabled={isSaving}>
+      {isSaving ? "Saving…" : saved ? "Saved" : "Save preferences"}
+    </HeaderButton>,
   );
 
   const onDays = DAYS_OF_WEEK.filter((d) => hours[d].on && hours[d].shifts.length > 0);
@@ -349,7 +371,7 @@ export default function CoachPreferencesPage() {
                   <div className="text-[13.5px]">{t.label}</div>
                   <div className="text-pretty text-xs text-muted">{t.hint}</div>
                 </div>
-                <Toggle on={flags[t.key]} onClick={() => setFlags((f) => ({ ...f, [t.key]: !f[t.key] }))} label={t.label} />
+                <Toggle on={flags[t.key]} onClick={() => toggleFlag(t.key)} label={t.label} />
               </div>
             ))}
           </Card>
@@ -381,7 +403,10 @@ export default function CoachPreferencesPage() {
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Landing screen</span>
               <Select
                 value={landing}
-                onChange={setLanding}
+                onChange={(v) => {
+                  setLandingOverride(v);
+                  setSaved(false);
+                }}
                 options={["Dashboard", "Schedule", "Members", "POS", "Reports"].map((v) => ({ value: v, label: v }))}
                 className="h-[38px] rounded-lg px-2 text-sm"
               />
@@ -390,7 +415,10 @@ export default function CoachPreferencesPage() {
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Default calendar view</span>
               <Select
                 value={calView}
-                onChange={setCalView}
+                onChange={(v) => {
+                  setCalViewOverride(v);
+                  setSaved(false);
+                }}
                 options={["Day", "Week", "Month"].map((v) => ({ value: v, label: v }))}
                 className="h-[38px] rounded-lg px-2 text-sm"
               />

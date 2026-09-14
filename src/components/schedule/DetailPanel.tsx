@@ -46,7 +46,7 @@ export function DetailPanel({
 
   const isGroup = !!occurrence.roster?.length;
   const roster = [...(occurrence.roster ?? []), ...(classAdds[occurrence.key] ?? [])];
-  const cap = capacityOf(occurrence.type, occurrence.name);
+  const cap = capacityOf(occurrence.type, occurrence.name, occurrence.capacity);
   const head = isGroup ? roster.length : 0;
   const full = cap > 0 && head >= cap;
   const waiting = waitlists[occurrence.key] ?? [];

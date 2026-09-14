@@ -4,13 +4,9 @@ export type CoachId = string;
 
 export type DayOfWeek = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
 
-export type SessionTypeName =
-  | "Personal Training"
-  | "Group Training"
-  | "Class"
-  | "Remote Consult"
-  | "Bodpod"
-  | "Blueprint and Baseline";
+/** The six built-ins are hardcoded (see data/mock/sessionTypes.ts); admins can add custom
+    ones from Settings, so this stays a plain string rather than a fixed union. */
+export type SessionTypeName = string;
 
 export interface SessionTypeDef {
   name: SessionTypeName;

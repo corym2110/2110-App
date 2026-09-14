@@ -97,7 +97,7 @@ export default function ClassesPage() {
           </div>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(268px,1fr))] gap-3">
             {occ.map((o) => {
-              const cap = capacityOf(o.type, o.name);
+              const cap = capacityOf(o.type, o.name, o.capacity);
               const roster = [...(o.roster ?? []), ...(classAdds[o.key] ?? [])];
               const head = roster.length;
               const full = cap > 0 && head >= cap;
@@ -223,7 +223,7 @@ export default function ClassesPage() {
                 type="button"
                 onClick={() => {
                   if (!addPick) return;
-                  const cap = capacityOf(selected!.type, selected!.name);
+                  const cap = capacityOf(selected!.type, selected!.name, selected!.capacity);
                   const head = (selected!.roster ?? []).length + (classAdds[selected!.key] ?? []).length;
                   const pick = addPick;
                   startTransition(async () => {
@@ -236,7 +236,7 @@ export default function ClassesPage() {
                 className="h-9 flex-none rounded-[9px] bg-accent px-3.5 text-[13px] font-semibold text-on-accent"
               >
                 {(() => {
-                  const cap = capacityOf(selected.type, selected.name);
+                  const cap = capacityOf(selected.type, selected.name, selected.capacity);
                   const head = (selected.roster ?? []).length + (classAdds[selected.key] ?? []).length;
                   return cap > 0 && head >= cap ? "Waitlist" : "Book in";
                 })()}

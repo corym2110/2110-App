@@ -252,7 +252,15 @@ function ScheduleInner() {
                 onClick={async () => {
                   const { occurrence, iso, start } = pendingMove;
                   await moveOccurrence(
-                    { sourceId: occurrence.sourceId, key: occurrence.key, type: occurrence.type, duration: occurrence.duration, name: occurrence.name, roster: occurrence.roster },
+                    {
+                      sourceId: occurrence.sourceId,
+                      key: occurrence.key,
+                      type: occurrence.type,
+                      duration: occurrence.duration,
+                      capacity: occurrence.capacity,
+                      name: occurrence.name,
+                      roster: occurrence.roster,
+                    },
                     iso,
                     start,
                   );

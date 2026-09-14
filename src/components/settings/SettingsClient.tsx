@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { Toggle } from "@/components/ui/Toggle";
 import { HeaderButton } from "@/components/ui/HeaderButton";
@@ -9,10 +9,14 @@ import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useCoachesWithRefetch } from "@/lib/useCoaches";
 import { AddCoachDialog } from "@/components/settings/AddCoachDialog";
+import { AddSessionTypeDialog } from "@/components/settings/AddSessionTypeDialog";
 import { initialsOf } from "@/lib/time";
-import { SESSION_TYPES, sessionTypeColor } from "@/data/mock/sessionTypes";
+import { sessionTypeColor } from "@/data/mock/sessionTypes";
+import { useSessionTypesWithRefetch } from "@/lib/useSessionTypes";
 import { matchProduct } from "@/data/mock/catalog";
 import { useThemeStore } from "@/stores/theme";
+import { useBusinessSettings, DEFAULT_BUSINESS_SETTINGS } from "@/lib/useBusinessSettings";
+import { saveBusinessSettings, type BusinessSettingsDTO } from "@/server/settings";
 
 type Tab = "Facility" | "Staff" | "Services" | "Payments" | "Notifications";
 
@@ -24,30 +28,48 @@ const TAB_LABELS: Record<Tab, string> = {
   Notifications: "Member reminders and internal alerts",
 };
 
-function useToggleGroup(initial: Record<string, boolean>) {
-  const [flags, setFlags] = useState(initial);
-  const toggle = (key: string) => setFlags((f) => ({ ...f, [key]: !f[key] }));
-  return { flags, toggle };
-}
-
 export function SettingsClient() {
   const [tab, setTab] = useState<Tab>("Facility");
   const [saved, setSaved] = useState(false);
+  const [isSaving, startSaving] = useTransition();
   const dark = useThemeStore((s) => s.theme === "dark");
-  const booking = useToggleGroup({ selfBook: true, waitlist: true, requireCard: false, allowDouble: false });
-  const payments = useToggleGroup({ emailReceipt: true, autoCharge: true, packageAlert: true, dailySummary: false });
-  const notify = useToggleGroup({ reminder: true, cancelNotice: true, waitlistOpen: true, birthday: false, marketing: false });
-  const [timezone, setTimezone] = useState("Mountain (MDT)");
-  const [bookingIncrement, setBookingIncrement] = useState("15 minutes");
-  const [calendarView, setCalendarView] = useState("Week");
-  const [currency, setCurrency] = useState("CAD");
-  const [cardTerminal, setCardTerminal] = useState("Front desk terminal · connected");
-  const [reminderTiming, setReminderTiming] = useState("24 hours before");
-  const [packageWarning, setPackageWarning] = useState("2 sessions left");
+  const { settings, refetch: refetchSettings } = useBusinessSettings();
+  const [override, setOverride] = useState<BusinessSettingsDTO | null>(null);
+  const values = override ?? settings ?? DEFAULT_BUSINESS_SETTINGS;
+
+  function patch(p: Partial<BusinessSettingsDTO>) {
+    setOverride({ ...values, ...p });
+    setSaved(false);
+  }
+  function patchBookingFlag(key: keyof BusinessSettingsDTO["bookingFlags"]) {
+    patch({ bookingFlags: { ...values.bookingFlags, [key]: !values.bookingFlags[key] } });
+  }
+  function patchPaymentsFlag(key: keyof BusinessSettingsDTO["paymentsFlags"]) {
+    patch({ paymentsFlags: { ...values.paymentsFlags, [key]: !values.paymentsFlags[key] } });
+  }
+  function patchNotifyFlag(key: keyof BusinessSettingsDTO["notifyFlags"]) {
+    patch({ notifyFlags: { ...values.notifyFlags, [key]: !values.notifyFlags[key] } });
+  }
+
   const { coaches, refetch: refetchCoaches } = useCoachesWithRefetch();
   const [addCoachOpen, setAddCoachOpen] = useState(false);
+  const { sessionTypes, refetch: refetchSessionTypes } = useSessionTypesWithRefetch();
+  const [addSessionTypeOpen, setAddSessionTypeOpen] = useState(false);
 
-  useHeaderAction(<HeaderButton onClick={() => setSaved(true)}>{saved ? "Saved" : "Save changes"}</HeaderButton>);
+  function saveChanges() {
+    startSaving(async () => {
+      await saveBusinessSettings(values);
+      setOverride(null);
+      refetchSettings();
+      setSaved(true);
+    });
+  }
+
+  useHeaderAction(
+    <HeaderButton onClick={saveChanges} disabled={isSaving}>
+      {isSaving ? "Saving…" : saved ? "Saved" : "Save changes"}
+    </HeaderButton>,
+  );
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -76,22 +98,34 @@ export function SettingsClient() {
             <h5 className="text-[15.5px] font-semibold">Facility</h5>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Business name</span>
-              <input defaultValue="2110 Fitness" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              <input
+                value={values.businessName}
+                onChange={(e) => patch({ businessName: e.target.value })}
+                className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+              />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Address</span>
-              <input defaultValue="5824 Burbank Rd SE, Calgary, AB" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              <input
+                value={values.address}
+                onChange={(e) => patch({ address: e.target.value })}
+                className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+              />
             </label>
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Phone</span>
-                <input defaultValue="+1 403 555 2110" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+                <input
+                  value={values.phone}
+                  onChange={(e) => patch({ phone: e.target.value })}
+                  className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+                />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Time zone</span>
                 <Select
-                  value={timezone}
-                  onChange={setTimezone}
+                  value={values.timezone}
+                  onChange={(v) => patch({ timezone: v })}
                   options={["Mountain (MDT)", "Pacific (PDT)", "Central (CDT)", "Eastern (EDT)"].map((v) => ({ value: v, label: v }))}
                   className="h-[38px] rounded-lg px-2 text-sm"
                 />
@@ -104,18 +138,26 @@ export function SettingsClient() {
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Opens</span>
-                <input defaultValue="6:00 AM" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+                <input
+                  value={values.opens}
+                  onChange={(e) => patch({ opens: e.target.value })}
+                  className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+                />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Closes</span>
-                <input defaultValue="8:00 PM" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+                <input
+                  value={values.closes}
+                  onChange={(e) => patch({ closes: e.target.value })}
+                  className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+                />
               </label>
             </div>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Booking increment</span>
               <Select
-                value={bookingIncrement}
-                onChange={setBookingIncrement}
+                value={values.bookingIncrement}
+                onChange={(v) => patch({ bookingIncrement: v })}
                 options={["5 minutes", "10 minutes", "15 minutes", "30 minutes"].map((v) => ({ value: v, label: v }))}
                 className="h-[38px] rounded-lg px-2 text-sm"
               />
@@ -123,8 +165,8 @@ export function SettingsClient() {
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Default calendar view</span>
               <Select
-                value={calendarView}
-                onChange={setCalendarView}
+                value={values.calendarView}
+                onChange={(v) => patch({ calendarView: v })}
                 options={["Week", "Day", "Month"].map((v) => ({ value: v, label: v }))}
                 className="h-[38px] rounded-lg px-2 text-sm"
               />
@@ -133,18 +175,20 @@ export function SettingsClient() {
 
           <Card className="px-[22px] py-5">
             <h5 className="mb-1 text-[15.5px] font-semibold">Booking rules</h5>
-            {[
-              { key: "selfBook", label: "Members can self-book", hint: "Booking opens 14 days ahead in the member app" },
-              { key: "waitlist", label: "Waitlists on full sessions", hint: "Members are promoted automatically when a spot frees up" },
-              { key: "requireCard", label: "Require card on file", hint: "Members must save a card before booking" },
-              { key: "allowDouble", label: "Allow double-booked slots", hint: "Lets two sessions share the same time in one coach's column" },
-            ].map((t) => (
+            {(
+              [
+                { key: "selfBook", label: "Members can self-book", hint: "Booking opens 14 days ahead in the member app" },
+                { key: "waitlist", label: "Waitlists on full sessions", hint: "Members are promoted automatically when a spot frees up" },
+                { key: "requireCard", label: "Require card on file", hint: "Members must save a card before booking" },
+                { key: "allowDouble", label: "Allow double-booked slots", hint: "Lets two sessions share the same time in one coach's column" },
+              ] as const
+            ).map((t) => (
               <div key={t.key} className="flex items-center gap-3.5 border-b border-divider py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <div className="text-[13.5px]">{t.label}</div>
                   <div className="text-pretty text-xs text-muted">{t.hint}</div>
                 </div>
-                <Toggle on={booking.flags[t.key]} onClick={() => booking.toggle(t.key)} label={t.label} />
+                <Toggle on={values.bookingFlags[t.key]} onClick={() => patchBookingFlag(t.key)} label={t.label} />
               </div>
             ))}
           </Card>
@@ -197,7 +241,7 @@ export function SettingsClient() {
             <span className="text-right">Price</span>
             <span>Capacity</span>
           </div>
-          {SESSION_TYPES.map((t) => {
+          {sessionTypes.map((t) => {
             const product = matchProduct(t.name);
             const price = product?.price ?? t.price;
             return (
@@ -213,13 +257,18 @@ export function SettingsClient() {
             );
           })}
           <div className="px-[22px] py-3.5">
-            <button type="button" className="flex h-9 items-center gap-1.5 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
+            <button
+              type="button"
+              onClick={() => setAddSessionTypeOpen(true)}
+              className="flex h-9 items-center gap-1.5 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row"
+            >
               <PlusIcon size={14} />
               Add session type
             </button>
           </div>
         </Card>
       )}
+      {addSessionTypeOpen && <AddSessionTypeDialog onClose={() => setAddSessionTypeOpen(false)} onAdded={refetchSessionTypes} />}
 
       {tab === "Payments" && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[18px]">
@@ -229,46 +278,56 @@ export function SettingsClient() {
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Currency</span>
                 <Select
-                  value={currency}
-                  onChange={setCurrency}
+                  value={values.currency}
+                  onChange={(v) => patch({ currency: v })}
                   options={["CAD", "USD"].map((v) => ({ value: v, label: v }))}
                   className="h-[38px] rounded-lg px-2 text-sm"
                 />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Sales tax</span>
-                <input defaultValue="GST 5%" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+                <input
+                  value={values.salesTax}
+                  onChange={(e) => patch({ salesTax: e.target.value })}
+                  className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+                />
               </label>
             </div>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Card terminal</span>
               <Select
-                value={cardTerminal}
-                onChange={setCardTerminal}
+                value={values.cardTerminal}
+                onChange={(v) => patch({ cardTerminal: v })}
                 options={["Front desk terminal · connected", "Mobile reader · connected"].map((v) => ({ value: v, label: v }))}
                 className="h-[38px] rounded-lg px-2 text-sm"
               />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Late cancellation fee</span>
-              <input defaultValue="$25.00" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              <input
+                value={values.lateCancelFee}
+                onChange={(e) => patch({ lateCancelFee: e.target.value })}
+                className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+              />
             </label>
           </Card>
 
           <Card className="px-[22px] py-5">
             <h5 className="mb-1 text-[15.5px] font-semibold">Receipts &amp; billing</h5>
-            {[
-              { key: "emailReceipt", label: "Email receipts", hint: "Sent to the member as soon as a sale is charged" },
-              { key: "autoCharge", label: "Auto-charge memberships", hint: "Recurring plans bill on their renewal date" },
-              { key: "packageAlert", label: "Flag unpaid sessions", hint: "Shows a balance-due badge on the session panel" },
-              { key: "dailySummary", label: "Print end-of-day till report", hint: "Prints automatically when the till is closed" },
-            ].map((t) => (
+            {(
+              [
+                { key: "emailReceipt", label: "Email receipts", hint: "Sent to the member as soon as a sale is charged" },
+                { key: "autoCharge", label: "Auto-charge memberships", hint: "Recurring plans bill on their renewal date" },
+                { key: "packageAlert", label: "Flag unpaid sessions", hint: "Shows a balance-due badge on the session panel" },
+                { key: "dailySummary", label: "Print end-of-day till report", hint: "Prints automatically when the till is closed" },
+              ] as const
+            ).map((t) => (
               <div key={t.key} className="flex items-center gap-3.5 border-b border-divider py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <div className="text-[13.5px]">{t.label}</div>
                   <div className="text-pretty text-xs text-muted">{t.hint}</div>
                 </div>
-                <Toggle on={payments.flags[t.key]} onClick={() => payments.toggle(t.key)} label={t.label} />
+                <Toggle on={values.paymentsFlags[t.key]} onClick={() => patchPaymentsFlag(t.key)} label={t.label} />
               </div>
             ))}
           </Card>
@@ -279,19 +338,21 @@ export function SettingsClient() {
         <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[18px]">
           <Card className="px-[22px] py-5">
             <h5 className="mb-1 text-[15.5px] font-semibold">Member notifications</h5>
-            {[
-              { key: "reminder", label: "Session reminders", hint: "Text and email before each booked session" },
-              { key: "cancelNotice", label: "Cancellation confirmations", hint: "Confirms cancellations and refund method" },
-              { key: "waitlistOpen", label: "Waitlist openings", hint: "Notifies the next member when a spot opens" },
-              { key: "birthday", label: "Birthday messages", hint: "Sends a note on the member's birthday" },
-              { key: "marketing", label: "Promotions and campaigns", hint: "Marketing email to members who opted in" },
-            ].map((t) => (
+            {(
+              [
+                { key: "reminder", label: "Session reminders", hint: "Text and email before each booked session" },
+                { key: "cancelNotice", label: "Cancellation confirmations", hint: "Confirms cancellations and refund method" },
+                { key: "waitlistOpen", label: "Waitlist openings", hint: "Notifies the next member when a spot opens" },
+                { key: "birthday", label: "Birthday messages", hint: "Sends a note on the member's birthday" },
+                { key: "marketing", label: "Promotions and campaigns", hint: "Marketing email to members who opted in" },
+              ] as const
+            ).map((t) => (
               <div key={t.key} className="flex items-center gap-3.5 border-b border-divider py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <div className="text-[13.5px]">{t.label}</div>
                   <div className="text-pretty text-xs text-muted">{t.hint}</div>
                 </div>
-                <Toggle on={notify.flags[t.key]} onClick={() => notify.toggle(t.key)} label={t.label} />
+                <Toggle on={values.notifyFlags[t.key]} onClick={() => patchNotifyFlag(t.key)} label={t.label} />
               </div>
             ))}
           </Card>
@@ -301,8 +362,8 @@ export function SettingsClient() {
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Session reminder</span>
               <Select
-                value={reminderTiming}
-                onChange={setReminderTiming}
+                value={values.reminderTiming}
+                onChange={(v) => patch({ reminderTiming: v })}
                 options={["24 hours before", "12 hours before", "2 hours before"].map((v) => ({ value: v, label: v }))}
                 className="h-[38px] rounded-lg px-2 text-sm"
               />
@@ -310,15 +371,19 @@ export function SettingsClient() {
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Package low warning</span>
               <Select
-                value={packageWarning}
-                onChange={setPackageWarning}
+                value={values.packageWarning}
+                onChange={(v) => patch({ packageWarning: v })}
                 options={["2 sessions left", "3 sessions left", "5 sessions left"].map((v) => ({ value: v, label: v }))}
                 className="h-[38px] rounded-lg px-2 text-sm"
               />
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Daily summary to</span>
-              <input defaultValue="cory@2110fitness.com" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+              <input
+                value={values.dailySummaryTo}
+                onChange={(e) => patch({ dailySummaryTo: e.target.value })}
+                className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+              />
             </label>
           </Card>
         </div>

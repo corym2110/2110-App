@@ -15,6 +15,10 @@ model Coach {
   active      Boolean           @default(true)
   /** Record<DayOfWeek, { on: boolean; shifts: { start: number; end: number }[] }> */
   weeklyHours Json?
+  /** { dayAhead: boolean; manualBooking: boolean; classJoin: boolean } */
+  notifyFlags Json?
+  landing     String            @default("Dashboard")
+  calendarView String           @default("Week")
   members     Member[]
   sales       Sale[]
   timeOff     TimeOff[]
@@ -40,6 +44,7 @@ model Booking {
   start     Int
   duration  Int
   type      String
+  capacity  Int      @default(0)
   coachId   String
   coach     Coach    @relation(fields: [coachId], references: [id])
   name      String
@@ -57,6 +62,7 @@ model RecurringSeries {
   id            String   @id @default(cuid())
   clientName    String
   type          String
+  capacity      Int      @default(0)
   coachId       String
   coach         Coach    @relation(fields: [coachId], references: [id])
   duration      Int
@@ -142,4 +148,45 @@ model Sale {
   method    String
   paid      Boolean  @default(true)
   createdAt DateTime @default(now())
+}
+
+/** Custom session types an admin adds beyond the six built-in ones (Personal Training, Group
+    Training, Class, Remote Consult, Bodpod, Blueprint and Baseline), which stay hardcoded since
+    scheduling logic is tuned around them. Both sets are merged for booking and display. */
+model SessionType {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  duration  Int
+  capacity  Int      @default(0)
+  price     Float    @default(0)
+  recurring Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+/** Single-row business-wide settings (Settings > Facility/Payments/Notifications). Always read/written
+    at id "singleton" — there's exactly one business. */
+model BusinessSettings {
+  id               String   @id @default("singleton")
+  businessName     String   @default("2110 Fitness")
+  address          String   @default("5824 Burbank Rd SE, Calgary, AB")
+  phone            String   @default("+1 403 555 2110")
+  timezone         String   @default("Mountain (MDT)")
+  opens            String   @default("6:00 AM")
+  closes           String   @default("8:00 PM")
+  bookingIncrement String   @default("15 minutes")
+  calendarView     String   @default("Week")
+  /** { selfBook, waitlist, requireCard, allowDouble } */
+  bookingFlags     Json     @default("{\"selfBook\":true,\"waitlist\":true,\"requireCard\":false,\"allowDouble\":false}")
+  currency         String   @default("CAD")
+  salesTax         String   @default("GST 5%")
+  cardTerminal     String   @default("Front desk terminal · connected")
+  lateCancelFee    String   @default("$25.00")
+  /** { emailReceipt, autoCharge, packageAlert, dailySummary } */
+  paymentsFlags    Json     @default("{\"emailReceipt\":true,\"autoCharge\":true,\"packageAlert\":true,\"dailySummary\":false}")
+  /** { reminder, cancelNotice, waitlistOpen, birthday, marketing } */
+  notifyFlags      Json     @default("{\"reminder\":true,\"cancelNotice\":true,\"waitlistOpen\":true,\"birthday\":false,\"marketing\":false}")
+  reminderTiming   String   @default("24 hours before")
+  packageWarning   String   @default("2 sessions left")
+  dailySummaryTo   String   @default("cory@2110fitness.com")
+  updatedAt        DateTime @updatedAt
 }

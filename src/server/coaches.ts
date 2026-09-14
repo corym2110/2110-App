@@ -11,10 +11,28 @@ export interface CoachRow {
   role: string;
   isAdmin: boolean;
   active: boolean;
+  notifyFlags: { dayAhead: boolean; manualBooking: boolean; classJoin: boolean } | null;
+  landing: string;
+  calendarView: string;
+}
+
+function toCoachRow(row: {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  isAdmin: boolean;
+  active: boolean;
+  notifyFlags: unknown;
+  landing: string;
+  calendarView: string;
+}): CoachRow {
+  return { ...row, notifyFlags: row.notifyFlags as CoachRow["notifyFlags"] };
 }
 
 export async function getCoaches(): Promise<CoachRow[]> {
-  return db.coach.findMany({ orderBy: { name: "asc" } });
+  const rows = await db.coach.findMany({ orderBy: { name: "asc" } });
+  return rows.map(toCoachRow);
 }
 
 /**
@@ -26,7 +44,8 @@ export async function getCurrentCoach(): Promise<CoachRow | null> {
   const user = await currentUser();
   const email = user?.primaryEmailAddress?.emailAddress ?? user?.emailAddresses?.[0]?.emailAddress;
   if (!email) return null;
-  return db.coach.findUnique({ where: { email } });
+  const row = await db.coach.findUnique({ where: { email } });
+  return row ? toCoachRow(row) : null;
 }
 
 export interface NewCoachInput {
@@ -47,4 +66,18 @@ export async function addCoach(input: NewCoachInput): Promise<string> {
   revalidatePath("/settings");
   revalidatePath("/schedule");
   return row.id;
+}
+
+export interface CoachPreferencesInput {
+  notifyFlags: { dayAhead: boolean; manualBooking: boolean; classJoin: boolean };
+  landing: string;
+  calendarView: string;
+}
+
+export async function updateCoachPreferences(coachId: string, input: CoachPreferencesInput): Promise<void> {
+  await db.coach.update({
+    where: { id: coachId },
+    data: { notifyFlags: input.notifyFlags as object, landing: input.landing, calendarView: input.calendarView },
+  });
+  revalidatePath("/preferences");
 }

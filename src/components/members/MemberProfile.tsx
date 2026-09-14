@@ -10,7 +10,7 @@ import { useCoaches } from "@/lib/useCoaches";
 import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
 import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@/server/members";
 import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
-import { sessionTypeColor, SHORT_LABEL } from "@/data/mock/sessionTypes";
+import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { addDays, formatDateShort, initialsOf, isoOf, money, slotKey, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
 
@@ -289,7 +289,7 @@ export function MemberProfile({
             <div key={`${h.iso}-${h.start}-${i}`} className="flex items-center gap-4 border-b border-divider py-2.5 last:border-b-0">
               <span className="w-[112px] flex-none text-[13.5px] tabular-nums text-muted">{formatDateShort(new Date(`${h.iso}T00:00:00`))}</span>
               <span className="w-[66px] flex-none text-[13px] font-semibold" style={{ color: sessionTypeColor(h.type, dark) }}>
-                {SHORT_LABEL[h.type]}
+                {shortLabel(h.type)}
               </span>
               <span className="min-w-0 flex-1 truncate text-[13.5px]">{h.type}</span>
               <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{h.coach}</span>

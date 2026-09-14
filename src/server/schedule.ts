@@ -13,6 +13,9 @@ export interface Occurrence {
   duration: number;
   name: string;
   type: SessionTypeName;
+  /** Capacity at the time this was booked — carried on the row itself (like duration), so
+      rendering never needs to re-resolve a possibly-custom session type's capacity. */
+  capacity: number;
   coach: CoachId;
   roster?: string[];
   sourceId: string;
@@ -58,6 +61,7 @@ export async function getOccurrencesForRange(fromIso: string, toIso: string, coa
         duration: b.duration,
         name: b.name,
         type: b.type as SessionTypeName,
+        capacity: b.capacity,
         coach: b.coachId,
         roster: b.roster.length > 0 ? b.roster : undefined,
         sourceId: b.id,
@@ -77,6 +81,7 @@ export async function getOccurrencesForRange(fromIso: string, toIso: string, coa
           duration: s.duration,
           name: s.clientName,
           type: s.type as SessionTypeName,
+          capacity: s.capacity,
           coach: s.coachId,
           sourceId: s.id,
         };
@@ -142,6 +147,7 @@ export interface NewBookingInput {
   start: number;
   duration: number;
   type: SessionTypeName;
+  capacity?: number;
   coachId: string;
   name: string;
   roster?: string[];
@@ -154,6 +160,7 @@ export async function addBooking(input: NewBookingInput): Promise<string> {
       start: input.start,
       duration: input.duration,
       type: input.type,
+      capacity: input.capacity ?? 0,
       coachId: input.coachId,
       name: input.name,
       roster: input.roster ?? [],
@@ -171,6 +178,7 @@ export async function updateBooking(id: string, patch: Partial<NewBookingInput>)
 export interface NewSeriesInput {
   clientName: string;
   type: SessionTypeName;
+  capacity?: number;
   coachId: string;
   duration: number;
   days: Partial<Record<DayOfWeek, number>>;
@@ -183,6 +191,7 @@ export async function addSeries(input: NewSeriesInput): Promise<string> {
     data: {
       clientName: input.clientName,
       type: input.type,
+      capacity: input.capacity ?? 0,
       coachId: input.coachId,
       duration: input.duration,
       days: input.days,
@@ -213,7 +222,7 @@ export async function cancelOccurrence(sourceId: string, key: string): Promise<v
 /** Moves/edits one occurrence to a new date/time/coach. A one-off booking is updated in place;
     a recurring occurrence is excluded on its origin date and recreated as a one-off booking. */
 export async function moveOccurrence(
-  occ: { sourceId: string; key: string; type: SessionTypeName; duration: number; name: string; roster?: string[] },
+  occ: { sourceId: string; key: string; type: SessionTypeName; duration: number; capacity: number; name: string; roster?: string[] },
   targetIso: string,
   targetStart: number,
   targetCoachId?: string,
@@ -236,6 +245,7 @@ export async function moveOccurrence(
         start: targetStart,
         duration: occ.duration,
         type: occ.type,
+        capacity: occ.capacity,
         coachId: targetCoachId ?? series?.coachId ?? "",
         name: occ.name,
         roster: occ.roster ?? [],
