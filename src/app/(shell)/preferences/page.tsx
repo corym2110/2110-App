@@ -1,10 +1,10 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { HeaderButton } from "@/components/ui/HeaderButton";
 import { Card } from "@/components/ui/Card";
 import { Toggle } from "@/components/ui/Toggle";
-import { XIcon } from "@/components/ui/icons";
+import { XIcon, PlusIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useThemeStore } from "@/stores/theme";
@@ -37,7 +37,10 @@ export default function CoachPreferencesPage() {
   const coach = useCurrentCoach();
   const coachId = coach?.id ?? "";
   const avail = useAvailabilityStore((s) => s.byCoach[coachId]) ?? EMPTY_AVAILABILITY;
-  const setDayHours = useAvailabilityStore((s) => s.setDayHours);
+  const toggleDayOn = useAvailabilityStore((s) => s.toggleDayOn);
+  const addShift = useAvailabilityStore((s) => s.addShift);
+  const updateShift = useAvailabilityStore((s) => s.updateShift);
+  const removeShift = useAvailabilityStore((s) => s.removeShift);
   const setTimeOff = useAvailabilityStore((s) => s.setTimeOff);
 
   const [saved, setSaved] = useState(false);
@@ -53,8 +56,8 @@ export default function CoachPreferencesPage() {
     <HeaderButton onClick={() => setSaved(true)}>{saved ? "Saved" : "Save preferences"}</HeaderButton>,
   );
 
-  const onDays = DAYS_OF_WEEK.filter((d) => avail.hours[d].on);
-  const totalHours = onDays.reduce((a, d) => a + (avail.hours[d].end - avail.hours[d].start) / 60, 0);
+  const onDays = DAYS_OF_WEEK.filter((d) => avail.hours[d].on && avail.hours[d].shifts.length > 0);
+  const totalHours = onDays.reduce((a, d) => a + avail.hours[d].shifts.reduce((b, s) => b + (s.end - s.start), 0) / 60, 0);
   const hoursSummary = onDays.length === 0 ? "No days set" : `${onDays.length} days · ${Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1)}h a week`;
 
   function addTimeOff() {
@@ -100,7 +103,7 @@ export default function CoachPreferencesPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-2">
         <Card className="flex flex-col gap-3.5 px-[22px] py-5">
           <h5 className="text-[15.5px] font-semibold">Schedule preferences</h5>
           <div>
@@ -108,52 +111,74 @@ export default function CoachPreferencesPage() {
               <div className="text-[13.5px] font-semibold">My weekly hours</div>
               <span className="text-xs text-muted">{hoursSummary}</span>
             </div>
-            <div className="grid grid-cols-[64px_minmax(0,1fr)_12px_minmax(0,1fr)_34px] items-center gap-2">
+            <div className="flex flex-col gap-2">
               {DAYS_OF_WEEK.map((d) => {
                 const h = avail.hours[d];
-                const span = (h.end - h.start) / 60;
+                const dayHours = h.shifts.reduce((a, s) => a + (s.end - s.start), 0) / 60;
                 return (
-                  <Fragment key={d}>
-                    <button
-                      type="button"
-                      onClick={() => setDayHours(coachId, d, { on: !h.on })}
-                      className={`h-[34px] rounded-lg border text-[13px] ${
-                        h.on ? "border-accent bg-row font-semibold" : "border-divider font-normal text-muted"
-                      }`}
-                    >
-                      {d}
-                    </button>
-                    <Select
-                      value={clock(h.start)}
-                      disabled={!h.on}
-                      onChange={(v) => {
-                        const mins = parseClock(v);
-                        setDayHours(coachId, d, { start: mins, end: Math.max(mins + 60, h.end) });
-                      }}
-                      options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
-                      className="h-[34px] min-w-0 rounded-lg px-1.5 text-[13px]"
-                    />
-                    <span className="text-center text-xs text-muted" style={{ opacity: h.on ? 1 : 0.45 }}>
-                      –
-                    </span>
-                    <Select
-                      value={clock(h.end)}
-                      disabled={!h.on}
-                      onChange={(v) => {
-                        const mins = parseClock(v);
-                        setDayHours(coachId, d, { end: mins, start: Math.min(h.start, mins - 60) });
-                      }}
-                      options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
-                      className="h-[34px] min-w-0 rounded-lg px-1.5 text-[13px]"
-                    />
-                    <span className="text-right text-[11.5px] tabular-nums text-muted" style={{ opacity: h.on ? 1 : 0.45 }}>
-                      {h.on ? (Number.isInteger(span) ? `${span}h` : `${span.toFixed(1)}h`) : "Off"}
-                    </span>
-                  </Fragment>
+                  <div key={d} className="rounded-lg border border-divider px-2.5 py-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleDayOn(coachId, d)}
+                        className={`h-[30px] w-14 flex-none rounded-lg border text-[13px] ${
+                          h.on ? "border-accent bg-row font-semibold" : "border-divider font-normal text-muted"
+                        }`}
+                      >
+                        {d}
+                      </button>
+                      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                        {h.on &&
+                          h.shifts.map((s, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                              <Select
+                                value={clock(s.start)}
+                                onChange={(v) => updateShift(coachId, d, i, { start: parseClock(v) })}
+                                options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
+                                className="h-[30px] min-w-0 flex-1 rounded-lg px-1.5 text-[12.5px]"
+                              />
+                              <span className="flex-none text-xs text-muted">–</span>
+                              <Select
+                                value={clock(s.end)}
+                                onChange={(v) => updateShift(coachId, d, i, { end: parseClock(v) })}
+                                options={TIME_OPTIONS.map((t) => ({ value: t, label: t }))}
+                                className="h-[30px] min-w-0 flex-1 rounded-lg px-1.5 text-[12.5px]"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeShift(coachId, d, i)}
+                                title="Remove this time block"
+                                className="grid h-[26px] w-[26px] flex-none place-items-center rounded-md text-muted hover:bg-row hover:text-bad"
+                              >
+                                <XIcon size={13} />
+                              </button>
+                            </div>
+                          ))}
+                        {!h.on && <span className="text-[13px] text-muted">Off</span>}
+                      </div>
+                    </div>
+                    {h.on && (
+                      <div className="mt-1.5 flex items-center justify-between gap-2 pl-[60px]">
+                        <button
+                          type="button"
+                          onClick={() => addShift(coachId, d)}
+                          className="flex h-6 items-center gap-1 rounded-md px-1.5 text-[12px] text-link hover:bg-row"
+                        >
+                          <PlusIcon size={11} />
+                          Add time block
+                        </button>
+                        <span className="text-[11.5px] tabular-nums text-muted">
+                          {Number.isInteger(dayHours) ? dayHours : dayHours.toFixed(1)}h
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
-            <div className="mt-2.5 text-xs text-pretty text-muted">Tap a day to mark it off. Changes apply to your own calendar right away.</div>
+            <div className="mt-2.5 text-xs text-pretty text-muted">
+              Tap a day to turn it on or off. Add another time block for a split shift. Changes apply to your own calendar right away.
+            </div>
           </div>
 
           <div className="h-px bg-divider" />

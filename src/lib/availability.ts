@@ -16,8 +16,14 @@ export function offReason(
   if (to) return to.reason + (to.type === "Partial day" ? " · partial day" : "");
   const day: DayOfWeek = DOW_LABELS[dowIndex(date)];
   const h = avail.hours[day];
-  if (!h || !h.on) return `Not working ${CLOSED_LABELS[dowIndex(date)]}`;
-  if (start < h.start) return `Before ${clock(h.start)} start`;
-  if (start + duration > h.end) return `Past ${clock(h.end)} finish`;
-  return null;
+  if (!h || !h.on || h.shifts.length === 0) return `Not working ${CLOSED_LABELS[dowIndex(date)]}`;
+
+  const fitsAShift = h.shifts.some((s) => start >= s.start && start + duration <= s.end);
+  if (fitsAShift) return null;
+
+  const first = h.shifts[0];
+  const last = h.shifts[h.shifts.length - 1];
+  if (start < first.start) return `Before ${clock(first.start)} start`;
+  if (start + duration > last.end) return `Past ${clock(last.end)} finish`;
+  return "Outside working hours";
 }

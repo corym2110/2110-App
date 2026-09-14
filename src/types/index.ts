@@ -29,10 +29,14 @@ export interface Coach {
   active: boolean;
 }
 
-export interface DayHours {
-  on: boolean;
+export interface Shift {
   start: number; // minutes from midnight
   end: number;
+}
+
+export interface DayHours {
+  on: boolean;
+  shifts: Shift[]; // supports split shifts, e.g. 6am-12pm and 3pm-7pm
 }
 
 export interface TimeOffEntry {

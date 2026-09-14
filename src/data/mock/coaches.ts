@@ -8,7 +8,7 @@ export function coachName(id: string): string {
   return COACHES.find((c) => c.id === id)?.name ?? id;
 }
 
-const hours = (on: boolean, start: number, end: number) => ({ on, start, end });
+const hours = (on: boolean, start: number, end: number) => ({ on, shifts: on ? [{ start, end }] : [] });
 
 export const DAYS_OF_WEEK: DayOfWeek[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
