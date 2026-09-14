@@ -89,7 +89,7 @@ export default function CoachPreferencesPage() {
         <div className="min-w-[220px] flex-1">
           <h2 className="m-0 text-[27px] font-medium tracking-tight">{coach.name}</h2>
           <div className="mt-0.5 text-[13.5px] text-muted">
-            {coach.role} · {coach.email}
+            {coach.isAdmin ? "Admin" : "Coach"} · {coach.email}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-full bg-row px-2.5 py-1 text-[12.5px]">{coach.isAdmin ? "Full access" : "Coach access"}</span>
@@ -100,8 +100,8 @@ export default function CoachPreferencesPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[18px]">
-        <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+      <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-2">
+        <Card className="flex flex-col gap-3.5 self-start px-[22px] py-5">
           <h5 className="text-[15.5px] font-semibold">Schedule preferences</h5>
           <div>
             <div className="mb-2 flex items-baseline justify-between gap-3">
@@ -237,7 +237,7 @@ export default function CoachPreferencesPage() {
           </div>
         </Card>
 
-        <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+        <Card className="flex flex-col gap-3.5 self-start px-[22px] py-5">
           <h5 className="text-[15.5px] font-semibold">Account</h5>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1.5">

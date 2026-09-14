@@ -32,7 +32,6 @@ export async function getCurrentCoach(): Promise<CoachRow | null> {
 export interface NewCoachInput {
   name: string;
   email: string;
-  role: string;
   isAdmin?: boolean;
 }
 
@@ -42,10 +41,9 @@ export async function addCoach(input: NewCoachInput): Promise<string> {
 
   const name = input.name.trim();
   const email = input.email.trim();
-  const role = input.role.trim();
-  if (!name || !email || !role) throw new Error("Name, email, and role are required.");
+  if (!name || !email) throw new Error("Name and email are required.");
 
-  const row = await db.coach.create({ data: { name, email, role, active: true, isAdmin: !!input.isAdmin } });
+  const row = await db.coach.create({ data: { name, email, role: "Coach", active: true, isAdmin: !!input.isAdmin } });
   revalidatePath("/settings");
   revalidatePath("/schedule");
   return row.id;

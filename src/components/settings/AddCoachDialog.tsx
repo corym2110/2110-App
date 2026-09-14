@@ -3,14 +3,10 @@
 import { useState, useTransition } from "react";
 import { addCoach } from "@/server/coaches";
 import { XIcon } from "@/components/ui/icons";
-import { Select } from "@/components/ui/Select";
-
-const ROLE_OPTIONS = ["Coach", "Facility Supervisor", "Front desk"];
 
 export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState(ROLE_OPTIONS[0]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -22,7 +18,7 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
     setError(null);
     startTransition(async () => {
       try {
-        await addCoach({ name, email, role, isAdmin });
+        await addCoach({ name, email, isAdmin });
         onAdded();
         onClose();
       } catch {
@@ -64,11 +60,6 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
             placeholder="name@email.com"
             className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
           />
-        </label>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11.5px] tracking-wider text-muted uppercase">Role</span>
-          <Select value={role} onChange={setRole} options={ROLE_OPTIONS.map((r) => ({ value: r, label: r }))} className="h-10 rounded-lg px-2.5 text-sm" />
         </label>
 
         <label className="flex items-center gap-2 text-[13px]">

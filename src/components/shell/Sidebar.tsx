@@ -85,7 +85,7 @@ export function Sidebar() {
           {!collapsed && (
             <Link href="/preferences" className="min-w-0 hover:opacity-80">
               <div className="truncate text-[13.5px] font-medium">{displayName}</div>
-              <div className="text-[11.5px] text-white/55">{coach ? `${coach.role}${coach.isAdmin ? " · Admin" : ""}` : "Coach"}</div>
+              <div className="text-[11.5px] text-white/55">{coach ? (coach.isAdmin ? "Admin" : "Coach") : "Coach"}</div>
             </Link>
           )}
         </div>

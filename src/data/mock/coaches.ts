@@ -1,7 +1,7 @@
 import type { Coach, CoachAvailability, DayOfWeek } from "@/types";
 
 export const COACHES: Coach[] = [
-  { id: "CM", name: "Cory Martin", initials: "CM", role: "Facility Supervisor", email: "cory@2110fitness.com", active: true },
+  { id: "CM", name: "Cory Martin", initials: "CM", role: "Coach", email: "cory@2110fitness.com", active: true },
 ];
 
 export function coachName(id: string): string {

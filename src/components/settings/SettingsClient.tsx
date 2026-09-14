@@ -16,7 +16,7 @@ type Tab = "Facility" | "Staff" | "Services" | "Payments" | "Notifications";
 
 const TAB_LABELS: Record<Tab, string> = {
   Facility: "Business details, hours and booking rules",
-  Staff: "Coaches, roles and access",
+  Staff: "Coaches and admin access",
   Services: "Session types, lengths and pricing",
   Payments: "Tax, terminals and receipts",
   Notifications: "Member reminders and internal alerts",
@@ -150,25 +150,23 @@ export function SettingsClient() {
 
       {tab === "Staff" && (
         <Card className="overflow-hidden py-1.5">
-          <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_96px] gap-3.5 border-b border-divider px-[22px] py-3 text-[11px] tracking-wider text-muted uppercase">
+          <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-3.5 border-b border-divider px-[22px] py-3 text-[11px] tracking-wider text-muted uppercase">
             <span>Staff</span>
-            <span>Role</span>
-            <span className="text-right">Status</span>
+            <span className="text-center">Status</span>
           </div>
           {coaches.map((c) => (
-            <div key={c.id} className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1.1fr)_96px] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
+            <div key={c.id} className="grid grid-cols-[minmax(0,1fr)_96px] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
               <span className="flex min-w-0 items-center gap-2.5">
                 <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-row text-[11.5px] font-semibold text-muted">{initialsOf(c.name)}</span>
-                <span className="min-w-0">
-                  <span className="block truncate text-[14.5px] font-medium">{c.name}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className="truncate text-[14.5px] font-medium">{c.name}</span>
+                    {c.isAdmin && <span className="flex-none rounded-full bg-accent/15 px-2 py-0.5 text-[10.5px] font-semibold text-accent">Admin</span>}
+                  </span>
                   <span className="block truncate text-xs text-muted">{c.email}</span>
                 </span>
               </span>
-              <span className="flex min-w-0 items-center gap-1.5 text-[13.5px]">
-                <span className="truncate">{c.role}</span>
-                {c.isAdmin && <span className="flex-none rounded-full bg-accent/15 px-2 py-0.5 text-[10.5px] font-semibold text-accent">Admin</span>}
-              </span>
-              <span className={`rounded-md py-0.5 text-right text-[11.5px] ${c.active ? "bg-ok/15 text-ok" : "bg-row text-muted"}`}>
+              <span className={`rounded-md py-0.5 text-center text-[11.5px] ${c.active ? "bg-ok/15 text-ok" : "bg-row text-muted"}`}>
                 {c.active ? "Active" : "Inactive"}
               </span>
             </div>
