@@ -10,7 +10,9 @@ import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useCoachesWithRefetch } from "@/lib/useCoaches";
 import { AddCoachDialog } from "@/components/settings/AddCoachDialog";
 import { initialsOf } from "@/lib/time";
-import { SESSION_TYPES } from "@/data/mock/sessionTypes";
+import { SESSION_TYPES, sessionTypeColor } from "@/data/mock/sessionTypes";
+import { matchProduct } from "@/data/mock/catalog";
+import { useThemeStore } from "@/stores/theme";
 
 type Tab = "Facility" | "Staff" | "Services" | "Payments" | "Notifications";
 
@@ -31,6 +33,7 @@ function useToggleGroup(initial: Record<string, boolean>) {
 export function SettingsClient() {
   const [tab, setTab] = useState<Tab>("Facility");
   const [saved, setSaved] = useState(false);
+  const dark = useThemeStore((s) => s.theme === "dark");
   const booking = useToggleGroup({ selfBook: true, waitlist: true, requireCard: false, allowDouble: false });
   const payments = useToggleGroup({ emailReceipt: true, autoCharge: true, packageAlert: true, dailySummary: false });
   const notify = useToggleGroup({ reminder: true, cancelNotice: true, waitlistOpen: true, birthday: false, marketing: false });
@@ -194,17 +197,21 @@ export function SettingsClient() {
             <span className="text-right">Price</span>
             <span>Capacity</span>
           </div>
-          {SESSION_TYPES.map((t) => (
-            <div key={t.name} className="grid grid-cols-[minmax(0,1.5fr)_108px_116px_minmax(0,1fr)] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
-              <span className="flex min-w-0 items-center gap-2.5">
-                <span className="h-2.5 w-2.5 flex-none rounded-[3px] bg-accent" />
-                <span className="min-w-0 truncate text-sm">{t.name}</span>
-              </span>
-              <span className="text-right text-[13.5px] tabular-nums">{t.duration} min</span>
-              <span className="text-right text-[13.5px] font-medium tabular-nums">{t.price ? `$${t.price.toFixed(2)}` : "No charge"}</span>
-              <span className="text-[13.5px] text-muted">{t.capacity ? `Up to ${t.capacity}` : "1 client"}</span>
-            </div>
-          ))}
+          {SESSION_TYPES.map((t) => {
+            const product = matchProduct(t.name);
+            const price = product?.price ?? t.price;
+            return (
+              <div key={t.name} className="grid grid-cols-[minmax(0,1.5fr)_108px_116px_minmax(0,1fr)] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
+                <span className="flex min-w-0 items-center gap-2.5">
+                  <span className="h-2.5 w-2.5 flex-none rounded-[3px]" style={{ background: sessionTypeColor(t.name, dark) }} />
+                  <span className="min-w-0 truncate text-sm">{t.name}</span>
+                </span>
+                <span className="text-right text-[13.5px] tabular-nums">{t.duration} min</span>
+                <span className="text-right text-[13.5px] font-medium tabular-nums">{price ? `$${price.toFixed(2)}` : "No charge"}</span>
+                <span className="text-[13.5px] text-muted">{t.capacity ? `Up to ${t.capacity}` : "1 client"}</span>
+              </div>
+            );
+          })}
           <div className="px-[22px] py-3.5">
             <button type="button" className="flex h-9 items-center gap-1.5 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
               <PlusIcon size={14} />
