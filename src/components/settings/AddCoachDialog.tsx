@@ -21,8 +21,8 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
         await addCoach({ name, email, isAdmin });
         onAdded();
         onClose();
-      } catch {
-        setError("Couldn't add that coach — check the email isn't already in use.");
+      } catch (e) {
+        setError(e instanceof Error && e.message ? e.message : "Couldn't add that coach — check the email isn't already in use.");
       }
     });
   }
@@ -33,7 +33,7 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-lg font-medium tracking-tight">Add coach</div>
-            <div className="text-[13px] text-muted">Adds a coach record. No login is created — that comes later.</div>
+            <div className="text-[13px] text-muted">Emails them an invite to set up their own login.</div>
           </div>
           <button type="button" onClick={onClose} className="grid h-8 w-8 flex-none place-items-center rounded-lg text-muted hover:bg-row hover:text-fg">
             <XIcon size={16} />
@@ -79,7 +79,7 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
             disabled={!canSave || isPending}
             className="h-10 rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent disabled:opacity-60"
           >
-            {isPending ? "Adding…" : "Add coach"}
+            {isPending ? "Sending invite…" : "Send invite"}
           </button>
         </div>
       </div>
