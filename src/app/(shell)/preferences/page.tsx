@@ -100,8 +100,8 @@ export default function CoachPreferencesPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-2">
-        <Card className="flex flex-col gap-3.5 self-start px-[22px] py-5">
+      <div className="grid grid-cols-1 items-start gap-[18px] lg:grid-cols-2">
+        <Card className="flex flex-col gap-3.5 px-[22px] py-5">
           <h5 className="text-[15.5px] font-semibold">Schedule preferences</h5>
           <div>
             <div className="mb-2 flex items-baseline justify-between gap-3">
@@ -237,7 +237,8 @@ export default function CoachPreferencesPage() {
           </div>
         </Card>
 
-        <Card className="flex flex-col gap-3.5 self-start px-[22px] py-5">
+        <div className="flex flex-col gap-[18px]">
+        <Card className="flex flex-col gap-3.5 px-[22px] py-5">
           <h5 className="text-[15.5px] font-semibold">Account</h5>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1.5">
@@ -323,6 +324,7 @@ export default function CoachPreferencesPage() {
             />
           </label>
         </Card>
+        </div>
       </div>
     </div>
   );

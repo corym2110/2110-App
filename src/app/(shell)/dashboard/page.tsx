@@ -1,32 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useBookingsStore } from "@/stores/bookings";
 import { useAttendanceStore } from "@/stores/attendance";
 import { occurrencesForDate } from "@/lib/scheduleEngine";
-import { clock, formatDateLong, startOfToday } from "@/lib/time";
+import { addDays, clock, DOW_LABELS, formatDateLong, isoOf, mondayOf, money, moneyRounded, startOfToday } from "@/lib/time";
 import { useMembers } from "@/lib/useMembers";
+import { useCurrentCoach } from "@/lib/useCoaches";
+import { getRevenueForRange, type DashboardRangeKey } from "@/server/sales";
 
-type Range = "Day" | "Week" | "Month";
-
-const STATS_BY_RANGE: Record<Range, { sessionsLabel: string; sessions: string; sessionsSub: string; utilization: string; revLabel: string; revenue: string; revSub: string }> = {
-  Day: { sessionsLabel: "Sessions today", sessions: "6", sessionsSub: "2 completed", utilization: "86%", revLabel: "Revenue today", revenue: "$540", revSub: "vs $480 last Wednesday" },
-  Week: { sessionsLabel: "Sessions this week", sessions: "28", sessionsSub: "9 completed", utilization: "80%", revLabel: "Revenue this week", revenue: "$2,460", revSub: "vs $2,180 last week" },
-  Month: { sessionsLabel: "Sessions this month", sessions: "112", sessionsSub: "9 completed", utilization: "83%", revLabel: "Revenue MTD", revenue: "$4,280", revSub: "vs $3,910 last month" },
-};
-
-const ATTENTION: { title: string; sub: string; dot: string; href: string }[] = [];
-
-const WEEK_OVERVIEW = [
-  { label: "Mon", count: 7, pct: 100 },
-  { label: "Tue", count: 5, pct: 72 },
-  { label: "Wed", count: 6, pct: 86, today: true },
-  { label: "Thu", count: 4, pct: 58 },
-  { label: "Fri", count: 6, pct: 86 },
-];
+type Range = DashboardRangeKey;
 
 function memberHref(name: string, members: { id: string; name: string }[]): string {
   const m = members.find((mm) => mm.name === name);
@@ -38,21 +24,76 @@ export default function DashboardPage() {
   const { bookings, series, moves, cancellations } = useBookingsStore();
   const statuses = useAttendanceStore((s) => s.statuses);
   const members = useMembers();
+  const coach = useCurrentCoach();
+  const isAdmin = coach?.isAdmin ?? false;
   const today = useMemo(() => startOfToday(), []);
   const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
+  const firstName = coach?.name?.split(" ")[0] ?? "there";
 
   const occurrences = useMemo(
     () => occurrencesForDate(today, moves, bookings, series, cancellations),
     [today, moves, bookings, series, cancellations],
   );
 
-  const stats = STATS_BY_RANGE[range];
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(mondayOf(today), i)), [today]);
+  const weekOverview = useMemo(
+    () =>
+      weekDays.map((d) => ({
+        date: d,
+        label: DOW_LABELS[(d.getDay() + 6) % 7],
+        count: occurrencesForDate(d, moves, bookings, series, cancellations).length,
+      })),
+    [weekDays, moves, bookings, series, cancellations],
+  );
+  const maxWeekCount = Math.max(1, ...weekOverview.map((d) => d.count));
+  const sessionsThisWeek = weekOverview.reduce((a, d) => a + d.count, 0);
+
+  const sessionsThisMonth = useMemo(() => {
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    let total = 0;
+    for (let i = 1; i <= daysInMonth; i++) {
+      total += occurrencesForDate(new Date(today.getFullYear(), today.getMonth(), i), moves, bookings, series, cancellations).length;
+    }
+    return total;
+  }, [today, moves, bookings, series, cancellations]);
+
+  const completedToday = occurrences.filter((o) => {
+    const status = statuses[`${o.iso}-${o.start}-${o.coach}-${o.roster ? "" : o.name}`];
+    const missed = status === "No-show" || status === "Late cancel" || status === "Cancelled";
+    return !missed && o.start + o.duration <= nowMin;
+  }).length;
+
+  const sessionsByRange: Record<Range, { label: string; value: number; sub: string }> = {
+    Day: { label: "Sessions today", value: occurrences.length, sub: `${completedToday} completed` },
+    Week: { label: "Sessions this week", value: sessionsThisWeek, sub: "" },
+    Month: { label: "Sessions this month", value: sessionsThisMonth, sub: "" },
+  };
+  const revLabelByRange: Record<Range, string> = { Day: "Revenue today", Week: "Revenue this week", Month: "Revenue MTD" };
+
+  const [revenue, setRevenue] = useState({ revenue: 0, saleCount: 0 });
+  useEffect(() => {
+    if (coach === undefined) return;
+    let cancelled = false;
+    getRevenueForRange(range, isAdmin ? undefined : coach?.id).then((r) => {
+      if (!cancelled) setRevenue(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [range, coach, isAdmin]);
+
+  const balanceDue = members
+    .filter((m) => m.balance > 0 && (isAdmin || m.coach === coach?.name))
+    .sort((a, b) => b.balance - a.balance);
+  const outstandingBalance = balanceDue.reduce((a, m) => a + m.balance, 0);
+
+  const sessions = sessionsByRange[range];
 
   return (
     <>
       <div className="flex items-end justify-between gap-5">
         <div>
-          <h2 className="m-0 text-[28px] font-medium tracking-tight">Good morning, Cory</h2>
+          <h2 className="m-0 text-[28px] font-medium tracking-tight">Good morning, {firstName}</h2>
           <div className="text-[13.5px] text-muted">
             {formatDateLong(today)} · {occurrences.length} sessions booked
           </div>
@@ -62,10 +103,15 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
         {[
-          { label: stats.sessionsLabel, value: stats.sessions, sub: stats.sessionsSub, href: "/schedule" },
+          { label: sessions.label, value: String(sessions.value), sub: sessions.sub, href: "/schedule" },
           { label: "Active members", value: String(members.length), sub: members.length === 0 ? "No members yet" : "", href: "/members" },
-          { label: "Utilization", value: stats.utilization, sub: "of coached hours", href: "/reports" },
-          { label: stats.revLabel, value: stats.revenue, sub: stats.revSub, href: "/reports" },
+          { label: revLabelByRange[range], value: moneyRounded(revenue.revenue), sub: `${revenue.saleCount} sale${revenue.saleCount === 1 ? "" : "s"}`, href: "/reports" },
+          {
+            label: "Outstanding balance",
+            value: moneyRounded(outstandingBalance),
+            sub: isAdmin ? "across all members" : "across your clients",
+            href: "/reports",
+          },
         ].map((c) => (
           <Link key={c.label} href={c.href} className="card-shadow block rounded-[14px] bg-surface px-[18px] py-4 hover:bg-row">
             <div className="text-[11px] tracking-wider text-muted uppercase">{c.label}</div>
@@ -124,30 +170,31 @@ export default function DashboardPage() {
         <div className="grid grid-rows-[auto_minmax(200px,1fr)] gap-[18px]">
           <Card className="flex flex-col gap-3 px-[22px] py-5">
             <h5 className="text-[15.5px] font-semibold">Needs attention</h5>
-            {ATTENTION.map((a) => (
-              <Link key={a.title} href={a.href} className="-mx-2 flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-row">
-                <span className={`mt-1.5 h-[7px] w-[7px] flex-none rounded-full ${a.dot}`} />
+            {balanceDue.slice(0, 4).map((m) => (
+              <Link key={m.id} href={`/members/${m.id}`} className="-mx-2 flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-row">
+                <span className="mt-1.5 h-[7px] w-[7px] flex-none rounded-full bg-bad" />
                 <span>
-                  <span className="block text-[13.5px]">{a.title}</span>
-                  <span className="block text-xs text-muted">{a.sub}</span>
+                  <span className="block text-[13.5px]">{m.name}</span>
+                  <span className="block text-xs text-muted">{money(m.balance)} balance due</span>
                 </span>
               </Link>
             ))}
+            {balanceDue.length === 0 && <div className="text-[13px] text-muted">Nothing needs attention right now.</div>}
           </Card>
 
           <Card className="flex flex-1 flex-col gap-3.5 px-[22px] py-5">
             <div className="flex items-center justify-between">
               <h5 className="text-[15.5px] font-semibold">This week</h5>
-              <span className="text-[12.5px] text-muted">28 of 35 slots</span>
+              <span className="text-[12.5px] text-muted">{sessionsThisWeek} sessions</span>
             </div>
-            <div className="grid flex-1 grid-cols-5 items-end gap-3">
-              {WEEK_OVERVIEW.map((d) => (
+            <div className="grid flex-1 grid-cols-7 items-end gap-2">
+              {weekOverview.map((d) => (
                 <Link key={d.label} href="/schedule" className="flex h-full flex-col items-center gap-2 text-fg hover:opacity-80">
                   <span className="flex-none text-[11.5px] tabular-nums text-muted">{d.count}</span>
                   <span className="flex min-h-0 w-full flex-1 items-end">
                     <span
-                      className={`w-full flex-none rounded-t-lg rounded-b-[3px] ${d.today ? "bg-accent" : "bg-accent/30"}`}
-                      style={{ height: `${d.pct}%` }}
+                      className={`w-full flex-none rounded-t-lg rounded-b-[3px] ${isoOf(d.date) === isoOf(today) ? "bg-accent" : "bg-accent/30"}`}
+                      style={{ height: `${Math.max(4, Math.round((d.count / maxWeekCount) * 100))}%` }}
                     />
                   </span>
                   <span className="flex-none text-[11.5px] text-muted">{d.label}</span>

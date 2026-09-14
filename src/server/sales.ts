@@ -67,6 +67,27 @@ function rangeStart(range: ReportRangeKey, now: Date): Date {
   return d;
 }
 
+export type DashboardRangeKey = "Day" | "Week" | "Month";
+
+function dashboardRangeStart(range: DashboardRangeKey, now: Date): Date {
+  const d = new Date(now);
+  if (range === "Week") {
+    const dow = (d.getDay() + 6) % 7; // 0 = Monday
+    d.setDate(d.getDate() - dow);
+  } else if (range === "Month") {
+    d.setDate(1);
+  }
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Real revenue for the dashboard's Day/Week/Month toggle — a coach's own sales when coachId is given. */
+export async function getRevenueForRange(range: DashboardRangeKey, coachId?: string): Promise<{ revenue: number; saleCount: number }> {
+  const since = dashboardRangeStart(range, new Date());
+  const sales = await db.sale.findMany({ where: { createdAt: { gte: since }, paid: true, ...(coachId ? { coachId } : {}) } });
+  return { revenue: sales.reduce((a, s) => a + Number(s.total), 0), saleCount: sales.length };
+}
+
 export interface RealReportsSummary {
   revenue: number;
   saleCount: number;
