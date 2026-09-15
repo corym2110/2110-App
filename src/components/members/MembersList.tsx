@@ -6,8 +6,10 @@ import { Card } from "@/components/ui/Card";
 import { HeaderButton } from "@/components/ui/HeaderButton";
 import { PlusIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
+import { useCurrentCoach } from "@/lib/useCoaches";
 import { initialsOf, money } from "@/lib/time";
 import { AddMemberDialog } from "@/components/members/AddMemberDialog";
+import { MergeMembersDialog } from "@/components/members/MergeMembersDialog";
 import type { Member } from "@/types";
 
 type Filter = "All" | "Balance due" | "Packages" | "Memberships";
@@ -16,12 +18,25 @@ const FILTERS: Filter[] = ["All", "Balance due", "Packages", "Memberships"];
 export function MembersList({ members }: { members: Member[] }) {
   const [filter, setFilter] = useState<Filter>("All");
   const [addOpen, setAddOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const coach = useCurrentCoach();
 
   useHeaderAction(
-    <HeaderButton onClick={() => setAddOpen(true)}>
-      <PlusIcon size={15} />
-      Add member
-    </HeaderButton>,
+    <div className="flex gap-2">
+      {coach?.isAdmin && (
+        <button
+          type="button"
+          onClick={() => setMergeOpen(true)}
+          className="flex h-9 items-center gap-1.5 rounded-full border border-divider px-3.5 text-[13px] hover:bg-row"
+        >
+          Merge duplicates
+        </button>
+      )}
+      <HeaderButton onClick={() => setAddOpen(true)}>
+        <PlusIcon size={15} />
+        Add member
+      </HeaderButton>
+    </div>,
   );
 
   const visible = members.filter((m) => {
@@ -90,6 +105,7 @@ export function MembersList({ members }: { members: Member[] }) {
       </Card>
 
       {addOpen && <AddMemberDialog onClose={() => setAddOpen(false)} />}
+      {mergeOpen && <MergeMembersDialog members={members} onClose={() => setMergeOpen(false)} />}
     </div>
   );
 }

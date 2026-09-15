@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
+import { getCurrentCoach } from "./coaches";
 import { getLastSessionByName } from "./schedule";
 import { clock, formatDateShort } from "@/lib/time";
 import type { Member } from "@/types";
@@ -157,4 +158,138 @@ export async function addSharedAccount(payerId: string, beneficiaryId: string): 
 export async function removeSharedAccount(payerId: string, beneficiaryId: string): Promise<void> {
   await db.sharedAccount.deleteMany({ where: { payerId, beneficiaryId } });
   revalidatePath(`/members/${payerId}`);
+}
+
+export interface MergeMembersInput {
+  /** The record that survives — its id stays the same, so existing links (e.g. POS/profile URLs) still work. */
+  keepId: string;
+  /** The duplicate being merged in and deleted. */
+  removeId: string;
+  /** Final field values for the surviving record — the dialog lets the admin pick each from either duplicate. */
+  fields: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    gender: string;
+    address?: string;
+    postalCode?: string;
+    city?: string;
+    province?: string;
+    plan: string;
+    since: string;
+    coachId?: string;
+  };
+}
+
+/**
+ * Merges two duplicate member records. Sales and shared-account links move to the surviving
+ * record by foreign key. Scheduling data (bookings, recurring series, waitlists, class add-ins,
+ * attendance) isn't linked by id — it's matched by name string — so every occurrence referencing
+ * either duplicate's old name is re-pointed to the merged record's final name.
+ */
+export async function mergeMembers(input: MergeMembersInput): Promise<void> {
+  const requester = await getCurrentCoach();
+  if (!requester?.isAdmin) throw new Error("Only an admin can merge members.");
+  if (input.keepId === input.removeId) throw new Error("Pick two different members.");
+
+  const [keep, remove] = await Promise.all([
+    db.member.findUniqueOrThrow({ where: { id: input.keepId } }),
+    db.member.findUniqueOrThrow({ where: { id: input.removeId } }),
+  ]);
+
+  const oldKeepName = fullName(keep);
+  const oldRemoveName = fullName(remove);
+  const newName = `${input.fields.firstName} ${input.fields.lastName}`.trim();
+  const oldNames = [...new Set([oldKeepName, oldRemoveName])].filter((n) => n && n !== newName);
+
+  await db.$transaction(async (tx) => {
+    // Sales move to the survivor by foreign key.
+    await tx.sale.updateMany({ where: { memberId: remove.id }, data: { memberId: keep.id } });
+
+    // Shared-account links: move to the survivor, skip self-links, and drop (not duplicate) a
+    // link the survivor already has to the same other member.
+    const asPayer = await tx.sharedAccount.findMany({ where: { payerId: remove.id } });
+    for (const link of asPayer) {
+      if (link.beneficiaryId === keep.id) continue;
+      await tx.sharedAccount.upsert({
+        where: { payerId_beneficiaryId: { payerId: keep.id, beneficiaryId: link.beneficiaryId } },
+        create: { payerId: keep.id, beneficiaryId: link.beneficiaryId },
+        update: {},
+      });
+    }
+    const asBeneficiary = await tx.sharedAccount.findMany({ where: { beneficiaryId: remove.id } });
+    for (const link of asBeneficiary) {
+      if (link.payerId === keep.id) continue;
+      await tx.sharedAccount.upsert({
+        where: { payerId_beneficiaryId: { payerId: link.payerId, beneficiaryId: keep.id } },
+        create: { payerId: link.payerId, beneficiaryId: keep.id },
+        update: {},
+      });
+    }
+
+    // Re-point every schedule reference (by name) from either duplicate's old name to the final name.
+    if (oldNames.length > 0) {
+      await tx.booking.updateMany({ where: { name: { in: oldNames } }, data: { name: newName } });
+      await tx.recurringSeries.updateMany({ where: { clientName: { in: oldNames } }, data: { clientName: newName } });
+
+      const rosterBookings = await tx.booking.findMany({ where: { roster: { hasSome: oldNames } } });
+      for (const b of rosterBookings) {
+        const roster = [...new Set(b.roster.map((n) => (oldNames.includes(n) ? newName : n)))];
+        await tx.booking.update({ where: { id: b.id }, data: { roster } });
+      }
+
+      for (const oldName of oldNames) {
+        const waitRows = await tx.waitlistEntry.findMany({ where: { memberName: oldName } });
+        for (const w of waitRows) {
+          const dupe = await tx.waitlistEntry.findUnique({ where: { occurrenceKey_memberName: { occurrenceKey: w.occurrenceKey, memberName: newName } } });
+          if (dupe) await tx.waitlistEntry.delete({ where: { id: w.id } });
+          else await tx.waitlistEntry.update({ where: { id: w.id }, data: { memberName: newName } });
+        }
+
+        const addRows = await tx.classAddIn.findMany({ where: { memberName: oldName } });
+        for (const a of addRows) {
+          const dupe = await tx.classAddIn.findUnique({ where: { occurrenceKey_memberName: { occurrenceKey: a.occurrenceKey, memberName: newName } } });
+          if (dupe) await tx.classAddIn.delete({ where: { id: a.id } });
+          else await tx.classAddIn.update({ where: { id: a.id }, data: { memberName: newName } });
+        }
+
+        // Attendance rows are keyed "iso-start-coachId-name" — recompute the key with the new name.
+        const attRows = await tx.attendanceRecord.findMany({ where: { slotKey: { endsWith: `-${oldName}` } } });
+        for (const row of attRows) {
+          const prefix = row.slotKey.slice(0, row.slotKey.length - oldName.length - 1);
+          const newKey = `${prefix}-${newName}`;
+          await tx.attendanceRecord.delete({ where: { slotKey: row.slotKey } });
+          await tx.attendanceRecord.upsert({ where: { slotKey: newKey }, create: { slotKey: newKey, iso: row.iso, status: row.status }, update: { status: row.status } });
+        }
+      }
+    }
+
+    // Delete the duplicate last — its dependents have already been moved off it, and this frees
+    // up its email before the survivor is updated (email is unique).
+    await tx.member.delete({ where: { id: remove.id } });
+
+    await tx.member.update({
+      where: { id: keep.id },
+      data: {
+        firstName: input.fields.firstName,
+        lastName: input.fields.lastName,
+        email: input.fields.email,
+        phone: input.fields.phone,
+        gender: input.fields.gender,
+        address: input.fields.address,
+        postalCode: input.fields.postalCode,
+        city: input.fields.city,
+        province: input.fields.province,
+        plan: input.fields.plan,
+        since: input.fields.since,
+        coachId: input.fields.coachId,
+      },
+    });
+  });
+
+  revalidatePath("/members");
+  revalidatePath(`/members/${keep.id}`);
+  revalidatePath("/schedule");
+  revalidatePath("/classes");
 }
