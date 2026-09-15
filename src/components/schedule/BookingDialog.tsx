@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { capacityOf } from "@/data/mock/sessionTypes";
 import { useSessionTypes } from "@/lib/useSessionTypes";
 import { useAvailabilityForCoaches } from "@/lib/useCoachAvailability";
+import { useBusinessSettings } from "@/lib/useBusinessSettings";
 import { addBooking, addSeries, cancelOccurrence, type Occurrence } from "@/server/schedule";
 import { offReason } from "@/lib/availability";
 import { addDays, clock, dowIndex, DOW_LABELS, formatDateLong, isoOf } from "@/lib/time";
@@ -26,8 +27,11 @@ export function BookingDialog({
   onSaved,
   members,
   coaches,
-  dayOccurrences,
+  dayOccurrences = [],
   editing,
+  defaultType,
+  dateEditable = false,
+  getOccurrencesForIso,
 }: {
   iso: string;
   start: number;
@@ -35,11 +39,18 @@ export function BookingDialog({
   onSaved: () => void;
   members: Member[];
   coaches: CoachRow[];
-  dayOccurrences: Occurrence[];
+  dayOccurrences?: Occurrence[];
   editing?: Occurrence;
+  /** Pre-select a type other than Personal Training (e.g. opening this dialog from the Classes tab). */
+  defaultType?: SessionTypeName;
+  /** Lets the admin pick the date inside the dialog instead of it being fixed by where it was opened from. */
+  dateEditable?: boolean;
+  /** Required when dateEditable: looks up occurrences for whatever date is currently picked, so capacity/conflict checks stay accurate as the date changes. */
+  getOccurrencesForIso?: (iso: string) => Occurrence[];
 }) {
   const sessionTypes = useSessionTypes();
-  const [type, setType] = useState<SessionTypeName>(editing?.type ?? "Personal Training");
+  const [type, setType] = useState<SessionTypeName>(editing?.type ?? defaultType ?? "Personal Training");
+  const [pickedIso, setPickedIso] = useState(iso);
   // Coaches can still be loading when this dialog first opens; falling back to coaches[0] here
   // (rather than only at mount) means we still land on a real coach once they arrive, instead of
   // silently submitting with no coach selected at all.
@@ -51,35 +62,42 @@ export function BookingDialog({
   const [isPending, startTransition] = useTransition();
 
   const availByCoach = useAvailabilityForCoaches([coach]);
+  const { settings: businessSettings } = useBusinessSettings();
 
-  const date = useMemo(() => new Date(`${iso}T00:00:00`), [iso]);
+  const date = useMemo(() => new Date(`${pickedIso}T00:00:00`), [pickedIso]);
+  const effectiveDayOccurrences = dateEditable && getOccurrencesForIso ? getOccurrencesForIso(pickedIso) : dayOccurrences;
 
   const [recur, setRecur] = useState(false);
-  /** Selected recurring days, each with its own start time (minutes from midnight). */
-  const [recurDays, setRecurDays] = useState<Partial<Record<DayOfWeek, number>>>(() => ({
-    [DOW_LABELS[dowIndex(date)]]: editing?.start ?? start,
-  }));
+  // Defaults to the picked day/time until the admin actually touches a day checkbox — otherwise,
+  // changing the date (dateEditable mode) would leave a stale day pre-checked from whatever date
+  // the dialog first opened with.
+  const defaultRecurDays = useMemo<Partial<Record<DayOfWeek, number>>>(() => ({ [DOW_LABELS[dowIndex(date)]]: time }), [date, time]);
+  const [recurDaysOverride, setRecurDaysOverride] = useState<Partial<Record<DayOfWeek, number>> | null>(null);
+  const recurDays = recurDaysOverride ?? defaultRecurDays;
   const [endMode, setEndMode] = useState<"never" | "weeks">("never");
   const [endWeeks, setEndWeeks] = useState(12);
 
   function toggleRecurDay(d: DayOfWeek) {
-    setRecurDays((r) => {
-      if (r[d] != null) {
-        const next = { ...r };
-        delete next[d];
-        return next;
-      }
-      return { ...r, [d]: time };
-    });
+    const next = { ...recurDays };
+    if (next[d] != null) delete next[d];
+    else next[d] = time;
+    setRecurDaysOverride(next);
   }
 
   const selectedDef = sessionTypes.find((t) => t.name === type);
   const duration = selectedDef?.duration ?? 60;
   const warn = offReason(availByCoach[coach], date, time, duration);
   const cap = capacityOf(type, client.trim(), selectedDef?.capacity ?? 0);
-  const existing = dayOccurrences.filter((o) => o.start === time && o.coach === coach && o.type === type && o.key !== editing?.key);
+  const existing = effectiveDayOccurrences.filter((o) => o.start === time && o.coach === coach && o.type === type && o.key !== editing?.key);
   const head = existing.reduce((a, o) => a + (o.roster?.length ?? 1), 0);
   const full = cap > 0 && head >= cap;
+
+  // Assigning a coach to a session blocks that hour of theirs — warn (or block, per the
+  // "Allow double-booked slots" business setting) if they're already on another session then.
+  const allowDouble = businessSettings?.bookingFlags.allowDouble ?? false;
+  const coachConflict = effectiveDayOccurrences.find(
+    (o) => o.coach === coach && o.key !== editing?.key && o.start < time + duration && time < o.start + o.duration,
+  );
 
   const canRecur = !editing && (selectedDef?.recurring ?? false);
   const selectedDays = DOW_LABELS.filter((d) => recurDays[d] != null);
@@ -89,6 +107,7 @@ export function BookingDialog({
     if (!coach) return;
     if (!client.trim() && type !== "Group Training" && type !== "Class") return;
     if (recur && canRecur && selectedDays.length === 0) return;
+    if (coachConflict && !allowDouble) return;
 
     startTransition(async () => {
       const capacity = selectedDef?.capacity ?? 0;
@@ -97,7 +116,7 @@ export function BookingDialog({
         // Cancel the original (deletes a one-off booking outright, or excludes just this date
         // from its recurring series) then create the edited version as a fresh one-off booking.
         await cancelOccurrence(editing.sourceId, editing.key);
-        await addBooking({ iso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
+        await addBooking({ iso: pickedIso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
         onSaved();
         onClose();
         return;
@@ -111,11 +130,11 @@ export function BookingDialog({
           coachId: coach,
           duration,
           days: recurDays,
-          fromIso: iso,
+          fromIso: pickedIso,
           toIso: endMode === "weeks" ? isoOf(addDays(date, endWeeks * 7)) : undefined,
         });
       } else {
-        await addBooking({ iso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
+        await addBooking({ iso: pickedIso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
       }
       onSaved();
       onClose();
@@ -136,6 +155,18 @@ export function BookingDialog({
             <XIcon size={16} />
           </button>
         </div>
+
+        {dateEditable && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] tracking-wider text-muted uppercase">Date</span>
+            <input
+              type="date"
+              value={pickedIso}
+              onChange={(e) => e.target.value && setPickedIso(e.target.value)}
+              className="h-10 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+            />
+          </label>
+        )}
 
         <label className="flex flex-col gap-1.5">
           <span className="text-[11.5px] tracking-wider text-muted uppercase">Session type</span>
@@ -207,7 +238,7 @@ export function BookingDialog({
                           {active && (
                             <Select
                               value={String(recurDays[d])}
-                              onChange={(v) => setRecurDays((r) => ({ ...r, [d]: Number(v) }))}
+                              onChange={(v) => setRecurDaysOverride({ ...recurDays, [d]: Number(v) })}
                               options={TIME_OPTIONS.map((t) => ({ value: String(t), label: clock(t) }))}
                               className="h-8 flex-1 rounded-lg px-2 text-[12px]"
                             />
@@ -262,6 +293,14 @@ export function BookingDialog({
           </div>
         )}
         {full && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">This slot is already full ({head} of {cap}).</div>}
+        {coachConflict && (
+          <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">
+            {coaches.find((c) => c.id === coach)?.name ?? "This coach"} already has {coachConflict.name || coachConflict.type} at {clock(coachConflict.start)} that day.
+            {allowDouble
+              ? " Booking anyway — double-booked slots are allowed in Settings."
+              : " Turn on “Allow double-booked slots” in Settings → Facility to book them anyway."}
+          </div>
+        )}
 
         {editing && confirmCancel && (
           <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">
@@ -303,10 +342,20 @@ export function BookingDialog({
             <button
               type="button"
               onClick={confirm}
-              disabled={!recurReady || isPending || !coach}
+              disabled={!recurReady || isPending || !coach || (!!coachConflict && !allowDouble)}
               className="h-10 rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {!coach ? "Loading coaches…" : isPending ? "Saving…" : editing ? "Save changes" : warn || full ? "Book anyway" : "Book session"}
+              {!coach
+                ? "Loading coaches…"
+                : coachConflict && !allowDouble
+                  ? "Coach unavailable then"
+                  : isPending
+                    ? "Saving…"
+                    : editing
+                      ? "Save changes"
+                      : warn || full || coachConflict
+                        ? "Book anyway"
+                        : "Book session"}
             </button>
           </div>
         </div>

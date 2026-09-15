@@ -3,7 +3,7 @@ import type { SessionTypeDef, SessionTypeName } from "@/types";
 export const SESSION_TYPES: SessionTypeDef[] = [
   { name: "Personal Training", duration: 60, capacity: 0, recurring: true, price: 50 },
   { name: "Group Training", duration: 60, capacity: 8, recurring: true, price: 30 },
-  { name: "Class", duration: 60, capacity: 12, recurring: false, price: 20 },
+  { name: "Class", duration: 60, capacity: 12, recurring: true, price: 20 },
   { name: "Remote Consult", duration: 15, capacity: 0, recurring: false, price: 40 },
   { name: "Bodpod", duration: 30, capacity: 0, recurring: false, price: 45 },
   { name: "Blueprint and Baseline", duration: 90, capacity: 0, recurring: false, price: 0 },

@@ -3,10 +3,11 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
-import { XIcon } from "@/components/ui/icons";
+import { XIcon, PlusIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useThemeStore } from "@/stores/theme";
 import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
+import { BookingDialog } from "@/components/schedule/BookingDialog";
 import { setAttendanceStatus, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist } from "@/server/schedule";
 import { addDays, clock, formatDateShort, formatDateLong, initialsOf, isoOf, mondayOf, slotKey, startOfToday } from "@/lib/time";
 import { capacityOf, sessionTypeColor } from "@/data/mock/sessionTypes";
@@ -21,6 +22,7 @@ export default function ClassesPage() {
   const [kinds, setKinds] = useState<Record<string, boolean>>({ Class: true, "Group Training": true });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [addPick, setAddPick] = useState("");
+  const [addClassOpen, setAddClassOpen] = useState(false);
   const [, startTransition] = useTransition();
 
   const dark = useThemeStore((s) => s.theme === "dark");
@@ -61,6 +63,14 @@ export default function ClassesPage() {
           </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setAddClassOpen(true)}
+            className="flex h-9 items-center gap-1.5 rounded-full bg-accent px-3.5 text-[13px] font-semibold text-on-accent"
+          >
+            <PlusIcon size={14} />
+            Add class
+          </button>
           <div className="flex gap-1 rounded-[11px] border border-divider p-1">
             {KINDS.map((k) => (
               <button
@@ -279,6 +289,20 @@ export default function ClassesPage() {
             </Link>
           </div>
         </div>
+      )}
+
+      {addClassOpen && (
+        <BookingDialog
+          iso={isoOf(startOfToday())}
+          start={540}
+          dateEditable
+          getOccurrencesForIso={(dateIso) => occurrencesOn(scheduleData, dateIso)}
+          defaultType="Class"
+          onClose={() => setAddClassOpen(false)}
+          onSaved={() => scheduleData.refetch()}
+          members={members}
+          coaches={coaches}
+        />
       )}
     </div>
   );
