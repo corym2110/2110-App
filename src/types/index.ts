@@ -57,6 +57,8 @@ export interface Member {
   coach: string; // coach full name
   lastSession: string;
   balance: number;
+  /** Sum of every paid sale ever, all-time — not just the current period. */
+  lifetimeSpend: number;
   since: string;
   phone: string;
   email: string;

@@ -53,6 +53,21 @@ export async function getUnpaidSalesForMember(memberId: string): Promise<UnpaidS
   return rows.map((r) => ({ id: r.id, summary: r.summary, total: Number(r.total), notes: r.notes, createdAt: r.createdAt.toISOString() }));
 }
 
+export interface MemberSaleHistoryRow {
+  id: string;
+  summary: string;
+  total: number;
+  method: string;
+  paid: boolean;
+  createdAt: string;
+}
+
+/** Every sale ever recorded for a member, newest first — the full purchase history, paid and unpaid alike. */
+export async function getSalesForMember(memberId: string): Promise<MemberSaleHistoryRow[]> {
+  const rows = await db.sale.findMany({ where: { memberId }, orderBy: { createdAt: "desc" } });
+  return rows.map((r) => ({ id: r.id, summary: r.summary, total: Number(r.total), method: r.method, paid: r.paid, createdAt: r.createdAt.toISOString() }));
+}
+
 export async function markSalePaid(saleId: string, memberId: string): Promise<void> {
   await db.sale.update({ where: { id: saleId }, data: { paid: true } });
   revalidatePath(`/members/${memberId}`);

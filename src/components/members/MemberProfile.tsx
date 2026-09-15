@@ -12,6 +12,7 @@ import { cancelOccurrence } from "@/server/schedule";
 import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@/server/members";
 import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
 import { CreateInvoiceDialog } from "@/components/members/CreateInvoiceDialog";
+import { PurchaseHistoryDialog } from "@/components/members/PurchaseHistoryDialog";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { addDays, formatDateShort, initialsOf, isoOf, money, slotKey, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
@@ -37,6 +38,7 @@ export function MemberProfile({
   const [unpaidSales, setUnpaidSales] = useState<UnpaidSale[]>([]);
   const [isPayingSale, startPaySale] = useTransition();
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const coaches = useCoaches();
 
@@ -136,12 +138,22 @@ export function MemberProfile({
             >
               {member.balance > 0 ? `${money(member.balance)} due` : "$0.00"}
             </span>
+            <span className="rounded-full bg-row px-2.5 py-1 text-[12.5px] text-muted" title="Sum of every paid sale, all-time">
+              {money(member.lifetimeSpend)} lifetime
+            </span>
           </div>
         </div>
         <div className="flex flex-none gap-2">
           <Link href="/schedule" className="grid h-[38px] place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
             Book session
           </Link>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="grid h-[38px] place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row"
+          >
+            Purchase history
+          </button>
           <button
             type="button"
             onClick={() => setInvoiceOpen(true)}
@@ -440,6 +452,7 @@ export function MemberProfile({
       </Card>
 
       {invoiceOpen && <CreateInvoiceDialog member={member} onClose={() => setInvoiceOpen(false)} />}
+      {historyOpen && <PurchaseHistoryDialog memberId={member.id} memberName={member.name} onClose={() => setHistoryOpen(false)} />}
     </div>
   );
 }

@@ -21,15 +21,16 @@ interface MemberRow {
   plan: string;
   since: string;
   coach: { name: string } | null;
-  sales: { total: unknown }[];
+  sales: { total: unknown; paid: boolean }[];
 }
 
 function fullName(row: { firstName: string; lastName: string }): string {
   return `${row.firstName} ${row.lastName}`.trim();
 }
 
-/** Balance due is computed live from unpaid sales — there's no stored balance column to drift out of sync. */
-const UNPAID_SALES_INCLUDE = { where: { paid: false }, select: { total: true } } as const;
+/** Balance due and lifetime spend are both computed live from real sales — there's no stored
+    column for either to drift out of sync (same reasoning for both: unpaid sum vs. paid sum). */
+const ALL_SALES_INCLUDE = { select: { total: true, paid: true } } as const;
 
 /** "Last session" is computed live from real bookings/recurring series — same reasoning as balance above. */
 function formatLastSession(hit: { iso: string; start: number } | undefined): string {
@@ -38,7 +39,8 @@ function formatLastSession(hit: { iso: string; start: number } | undefined): str
 }
 
 function toMember(row: MemberRow, lastSession: string): Member {
-  const balance = row.sales.reduce((a, s) => a + Number(s.total), 0);
+  const balance = row.sales.filter((s) => !s.paid).reduce((a, s) => a + Number(s.total), 0);
+  const lifetimeSpend = row.sales.filter((s) => s.paid).reduce((a, s) => a + Number(s.total), 0);
   return {
     id: row.id,
     name: fullName(row),
@@ -49,6 +51,7 @@ function toMember(row: MemberRow, lastSession: string): Member {
     phone: row.phone,
     plan: row.plan,
     balance,
+    lifetimeSpend,
     since: row.since,
     lastSession,
     coach: row.coach?.name ?? "Unassigned",
@@ -61,7 +64,7 @@ function toMember(row: MemberRow, lastSession: string): Member {
 
 export async function getMembers(): Promise<Member[]> {
   const rows = await db.member.findMany({
-    include: { coach: true, sales: UNPAID_SALES_INCLUDE },
+    include: { coach: true, sales: ALL_SALES_INCLUDE },
     orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
   });
   const lastSessions = await getLastSessionByName(rows.map(fullName));
@@ -69,7 +72,7 @@ export async function getMembers(): Promise<Member[]> {
 }
 
 export async function getMemberById(id: string): Promise<Member | null> {
-  const row = await db.member.findUnique({ where: { id }, include: { coach: true, sales: UNPAID_SALES_INCLUDE } });
+  const row = await db.member.findUnique({ where: { id }, include: { coach: true, sales: ALL_SALES_INCLUDE } });
   if (!row) return null;
   const lastSessions = await getLastSessionByName([fullName(row)]);
   return toMember(row, formatLastSession(lastSessions[fullName(row)]));
