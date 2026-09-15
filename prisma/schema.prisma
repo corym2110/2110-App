@@ -147,6 +147,10 @@ model Sale {
   total     Decimal  @db.Decimal(10, 2)
   method    String
   paid      Boolean  @default(true)
+  /** Free-text comment on what this bills for (e.g. "PT sessions Sep 1-15") — shown on the invoice. */
+  notes     String?
+  /** Optional itemized breakdown: Array<{ description: string; amount: number }>. Falls back to summary/total when absent. */
+  lineItems Json?
   createdAt DateTime @default(now())
 }
 

@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 
+export interface SaleLineItem {
+  description: string;
+  amount: number;
+}
+
 export interface NewSaleInput {
   memberId?: string;
   coachId?: string;
@@ -11,6 +16,9 @@ export interface NewSaleInput {
   method: string;
   /** false = invoice the member now, pay later (adds to their balance due). */
   paid: boolean;
+  /** What this bills for (e.g. "PT sessions Sep 1-15") — shown on the invoice. */
+  notes?: string;
+  lineItems?: SaleLineItem[];
 }
 
 export async function createSale(input: NewSaleInput): Promise<string> {
@@ -22,6 +30,8 @@ export async function createSale(input: NewSaleInput): Promise<string> {
       total: input.total,
       method: input.method,
       paid: input.paid,
+      notes: input.notes?.trim() || undefined,
+      lineItems: input.lineItems ? (input.lineItems as object) : undefined,
     },
   });
   if (input.memberId) revalidatePath(`/members/${input.memberId}`);
@@ -34,12 +44,13 @@ export interface UnpaidSale {
   id: string;
   summary: string;
   total: number;
+  notes: string | null;
   createdAt: string;
 }
 
 export async function getUnpaidSalesForMember(memberId: string): Promise<UnpaidSale[]> {
   const rows = await db.sale.findMany({ where: { memberId, paid: false }, orderBy: { createdAt: "asc" } });
-  return rows.map((r) => ({ id: r.id, summary: r.summary, total: Number(r.total), createdAt: r.createdAt.toISOString() }));
+  return rows.map((r) => ({ id: r.id, summary: r.summary, total: Number(r.total), notes: r.notes, createdAt: r.createdAt.toISOString() }));
 }
 
 export async function markSalePaid(saleId: string, memberId: string): Promise<void> {
@@ -47,6 +58,56 @@ export async function markSalePaid(saleId: string, memberId: string): Promise<vo
   revalidatePath(`/members/${memberId}`);
   revalidatePath("/members");
   revalidatePath("/reports");
+  revalidatePath(`/invoices/${saleId}`);
+}
+
+export interface InvoiceData {
+  id: string;
+  summary: string;
+  total: number;
+  method: string;
+  paid: boolean;
+  notes: string | null;
+  lineItems: SaleLineItem[] | null;
+  createdAt: string;
+  member: { id: string; name: string; email: string; phone: string; address: string | null; city: string | null; province: string | null; postalCode: string | null } | null;
+  coach: { name: string } | null;
+}
+
+export async function getInvoice(saleId: string): Promise<InvoiceData | null> {
+  const row = await db.sale.findUnique({
+    where: { id: saleId },
+    include: { member: true, coach: true },
+  });
+  if (!row) return null;
+  return {
+    id: row.id,
+    summary: row.summary,
+    total: Number(row.total),
+    method: row.method,
+    paid: row.paid,
+    notes: row.notes,
+    lineItems: (row.lineItems as SaleLineItem[] | null) ?? null,
+    createdAt: row.createdAt.toISOString(),
+    member: row.member
+      ? {
+          id: row.member.id,
+          name: `${row.member.firstName} ${row.member.lastName}`.trim(),
+          email: row.member.email,
+          phone: row.member.phone,
+          address: row.member.address,
+          city: row.member.city,
+          province: row.member.province,
+          postalCode: row.member.postalCode,
+        }
+      : null,
+    coach: row.coach ? { name: row.coach.name } : null,
+  };
+}
+
+export async function updateInvoiceNotes(saleId: string, notes: string): Promise<void> {
+  await db.sale.update({ where: { id: saleId }, data: { notes: notes.trim() || null } });
+  revalidatePath(`/invoices/${saleId}`);
 }
 
 export type ReportRangeKey = "This week" | "This month" | "Last 90 days" | "Year to date";

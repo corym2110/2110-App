@@ -11,6 +11,7 @@ import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
 import { cancelOccurrence } from "@/server/schedule";
 import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@/server/members";
 import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
+import { CreateInvoiceDialog } from "@/components/members/CreateInvoiceDialog";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { addDays, formatDateShort, initialsOf, isoOf, money, slotKey, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
@@ -35,6 +36,7 @@ export function MemberProfile({
   const [isPending, startTransition] = useTransition();
   const [unpaidSales, setUnpaidSales] = useState<UnpaidSale[]>([]);
   const [isPayingSale, startPaySale] = useTransition();
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
 
   const coaches = useCoaches();
 
@@ -140,6 +142,13 @@ export function MemberProfile({
           <Link href="/schedule" className="grid h-[38px] place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
             Book session
           </Link>
+          <button
+            type="button"
+            onClick={() => setInvoiceOpen(true)}
+            className="grid h-[38px] place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row"
+          >
+            Create invoice
+          </button>
           <Link
             href={`/pos?member=${encodeURIComponent(member.name)}`}
             className="grid h-[38px] place-items-center rounded-full bg-accent px-[18px] text-[13.5px] font-semibold text-on-accent"
@@ -286,6 +295,9 @@ export function MemberProfile({
                 <div key={s.id} className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate text-[13px]">{s.summary}</span>
                   <span className="flex-none text-[13px] tabular-nums text-bad">{money(s.total)}</span>
+                  <Link href={`/invoices/${s.id}`} className="flex-none text-[11.5px] text-link hover:text-link-hover">
+                    Invoice
+                  </Link>
                   <button
                     type="button"
                     disabled={isPayingSale}
@@ -426,6 +438,8 @@ export function MemberProfile({
           </>
         )}
       </Card>
+
+      {invoiceOpen && <CreateInvoiceDialog member={member} onClose={() => setInvoiceOpen(false)} />}
     </div>
   );
 }
