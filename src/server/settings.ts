@@ -14,7 +14,7 @@ export interface BusinessSettingsDTO {
   closes: string;
   bookingIncrement: string;
   calendarView: string;
-  bookingFlags: { selfBook: boolean; waitlist: boolean; requireCard: boolean; allowDouble: boolean };
+  bookingFlags: { selfBook: boolean; waitlist: boolean; requireCard: boolean };
   currency: string;
   salesTax: string;
   cardTerminal: string;

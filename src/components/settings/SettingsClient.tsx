@@ -180,7 +180,6 @@ export function SettingsClient() {
                 { key: "selfBook", label: "Members can self-book", hint: "Booking opens 14 days ahead in the member app" },
                 { key: "waitlist", label: "Waitlists on full sessions", hint: "Members are promoted automatically when a spot frees up" },
                 { key: "requireCard", label: "Require card on file", hint: "Members must save a card before booking" },
-                { key: "allowDouble", label: "Allow double-booked slots", hint: "Lets two sessions share the same time in one coach's column" },
               ] as const
             ).map((t) => (
               <div key={t.key} className="flex items-center gap-3.5 border-b border-divider py-3 last:border-b-0">

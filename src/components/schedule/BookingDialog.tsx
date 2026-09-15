@@ -4,7 +4,6 @@ import { useMemo, useState, useTransition } from "react";
 import { capacityOf } from "@/data/mock/sessionTypes";
 import { useSessionTypes } from "@/lib/useSessionTypes";
 import { useAvailabilityForCoaches } from "@/lib/useCoachAvailability";
-import { useBusinessSettings } from "@/lib/useBusinessSettings";
 import { addBooking, addSeries, cancelOccurrence, type Occurrence } from "@/server/schedule";
 import { offReason } from "@/lib/availability";
 import { addDays, clock, dowIndex, DOW_LABELS, formatDateLong, isoOf } from "@/lib/time";
@@ -62,7 +61,6 @@ export function BookingDialog({
   const [isPending, startTransition] = useTransition();
 
   const availByCoach = useAvailabilityForCoaches([coach]);
-  const { settings: businessSettings } = useBusinessSettings();
 
   const date = useMemo(() => new Date(`${pickedIso}T00:00:00`), [pickedIso]);
   const effectiveDayOccurrences = dateEditable && getOccurrencesForIso ? getOccurrencesForIso(pickedIso) : dayOccurrences;
@@ -92,9 +90,8 @@ export function BookingDialog({
   const head = existing.reduce((a, o) => a + (o.roster?.length ?? 1), 0);
   const full = cap > 0 && head >= cap;
 
-  // Assigning a coach to a session blocks that hour of theirs — warn (or block, per the
-  // "Allow double-booked slots" business setting) if they're already on another session then.
-  const allowDouble = businessSettings?.bookingFlags.allowDouble ?? false;
+  // Assigning a coach to a session blocks that hour of theirs — warn if they're already on
+  // another session then, same as the availability warning below: always overridable per-booking.
   const coachConflict = effectiveDayOccurrences.find(
     (o) => o.coach === coach && o.key !== editing?.key && o.start < time + duration && time < o.start + o.duration,
   );
@@ -107,7 +104,6 @@ export function BookingDialog({
     if (!coach) return;
     if (!client.trim() && type !== "Group Training" && type !== "Class") return;
     if (recur && canRecur && selectedDays.length === 0) return;
-    if (coachConflict && !allowDouble) return;
 
     startTransition(async () => {
       const capacity = selectedDef?.capacity ?? 0;
@@ -295,10 +291,7 @@ export function BookingDialog({
         {full && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">This slot is already full ({head} of {cap}).</div>}
         {coachConflict && (
           <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">
-            {coaches.find((c) => c.id === coach)?.name ?? "This coach"} already has {coachConflict.name || coachConflict.type} at {clock(coachConflict.start)} that day.
-            {allowDouble
-              ? " Booking anyway — double-booked slots are allowed in Settings."
-              : " Turn on “Allow double-booked slots” in Settings → Facility to book them anyway."}
+            {coaches.find((c) => c.id === coach)?.name ?? "This coach"} already has {coachConflict.name || coachConflict.type} at {clock(coachConflict.start)} that day. You can still book — it&apos;s the coach&apos;s call.
           </div>
         )}
 
@@ -342,20 +335,10 @@ export function BookingDialog({
             <button
               type="button"
               onClick={confirm}
-              disabled={!recurReady || isPending || !coach || (!!coachConflict && !allowDouble)}
+              disabled={!recurReady || isPending || !coach}
               className="h-10 rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-45"
             >
-              {!coach
-                ? "Loading coaches…"
-                : coachConflict && !allowDouble
-                  ? "Coach unavailable then"
-                  : isPending
-                    ? "Saving…"
-                    : editing
-                      ? "Save changes"
-                      : warn || full || coachConflict
-                        ? "Book anyway"
-                        : "Book session"}
+              {!coach ? "Loading coaches…" : isPending ? "Saving…" : editing ? "Save changes" : warn || full || coachConflict ? "Book anyway" : "Book session"}
             </button>
           </div>
         </div>

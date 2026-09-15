@@ -12,7 +12,7 @@ export const DEFAULT_BUSINESS_SETTINGS: BusinessSettingsDTO = {
   closes: "8:00 PM",
   bookingIncrement: "15 minutes",
   calendarView: "Week",
-  bookingFlags: { selfBook: true, waitlist: true, requireCard: false, allowDouble: false },
+  bookingFlags: { selfBook: true, waitlist: true, requireCard: false },
   currency: "CAD",
   salesTax: "GST 5%",
   cardTerminal: "Front desk terminal · connected",
