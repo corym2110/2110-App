@@ -135,7 +135,7 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(420px,1fr))] items-start gap-[18px]">
+      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2">
         <Card className="px-[22px] py-5">
           <div className="mb-4 flex items-baseline justify-between gap-3.5">
             <h5 className="text-[15.5px] font-semibold">Revenue by payment method</h5>
@@ -217,11 +217,11 @@ export default function ReportsPage() {
           </div>
         </Card>
 
-        <Card className="px-[22px] py-5">
+        <Card className={`px-[22px] py-5 ${isAdmin ? "sm:col-span-2" : ""}`}>
           <h5 className="mb-1.5 text-[15.5px] font-semibold">Sessions &amp; attendance</h5>
           <div className="py-6 text-center text-[13.5px] text-pretty text-muted">
-            Not available yet — the schedule still runs on local device storage rather than the shared database, so
-            session counts, utilization, and attendance can&apos;t be reported on across the whole business yet.
+            Not available yet — session counts, utilization, and attendance reporting across the whole business hasn&apos;t
+            been built yet.
           </div>
         </Card>
       </div>

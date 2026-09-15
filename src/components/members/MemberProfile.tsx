@@ -149,7 +149,7 @@ export function MemberProfile({
         </div>
       </Card>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] items-start gap-[18px]">
+      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2">
         <Card className="px-[22px] py-5">
           <div className="mb-3 flex items-baseline justify-between gap-2.5">
             <h5 className="text-[15.5px] font-semibold">Shared accounts</h5>

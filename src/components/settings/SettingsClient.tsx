@@ -93,7 +93,7 @@ export function SettingsClient() {
       </div>
 
       {tab === "Facility" && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[18px]">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-[18px]">
           <Card className="flex flex-col gap-3.5 px-[22px] py-5">
             <h5 className="text-[15.5px] font-semibold">Facility</h5>
             <label className="flex flex-col gap-1.5">
@@ -270,7 +270,7 @@ export function SettingsClient() {
       {addSessionTypeOpen && <AddSessionTypeDialog onClose={() => setAddSessionTypeOpen(false)} onAdded={refetchSessionTypes} />}
 
       {tab === "Payments" && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[18px]">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-[18px]">
           <Card className="flex flex-col gap-3.5 px-[22px] py-5">
             <h5 className="text-[15.5px] font-semibold">Payments</h5>
             <div className="grid grid-cols-2 gap-3">
@@ -334,7 +334,7 @@ export function SettingsClient() {
       )}
 
       {tab === "Notifications" && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] items-start gap-[18px]">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-[18px]">
           <Card className="px-[22px] py-5">
             <h5 className="mb-1 text-[15.5px] font-semibold">Member notifications</h5>
             {(
