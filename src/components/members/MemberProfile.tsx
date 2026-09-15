@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/Select";
 import { useThemeStore } from "@/stores/theme";
 import { useCoaches } from "@/lib/useCoaches";
 import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
+import { cancelOccurrence } from "@/server/schedule";
 import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@/server/members";
 import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
@@ -15,6 +16,7 @@ import { addDays, formatDateShort, initialsOf, isoOf, money, slotKey, startOfTod
 import type { Member, SessionTypeName } from "@/types";
 
 const HISTORY_LOOKBACK_DAYS = 90;
+const UPCOMING_WINDOW_DAYS = 90;
 
 export function MemberProfile({
   member,
@@ -62,6 +64,48 @@ export function MemberProfile({
     }
     return rows.sort((a, b) => (a.iso === b.iso ? b.start - a.start : b.iso < a.iso ? -1 : 1));
   }, [scheduleData, today, member.name, coaches]);
+
+  const tomorrow = useMemo(() => addDays(today, 1), [today]);
+  const upcomingToIso = useMemo(() => isoOf(addDays(today, UPCOMING_WINDOW_DAYS)), [today]);
+  const upcomingData = useScheduleRange(isoOf(tomorrow), upcomingToIso);
+
+  const upcoming = useMemo(() => {
+    const rows: { iso: string; start: number; type: SessionTypeName; coach: string; key: string; sourceId: string }[] = [];
+    for (let i = 0; i <= UPCOMING_WINDOW_DAYS; i++) {
+      const date = addDays(tomorrow, i);
+      const occs = occurrencesOn(upcomingData, isoOf(date));
+      for (const o of occs) {
+        if (o.name !== member.name && !(o.roster ?? []).includes(member.name)) continue;
+        rows.push({ iso: o.iso, start: o.start, type: o.type, coach: coaches.find((c) => c.id === o.coach)?.name ?? o.coach, key: o.key, sourceId: o.sourceId });
+      }
+    }
+    return rows.sort((a, b) => (a.iso === b.iso ? a.start - b.start : a.iso < b.iso ? -1 : 1));
+  }, [upcomingData, tomorrow, member.name, coaches]);
+
+  const [historyTab, setHistoryTab] = useState<"upcoming" | "completed">("upcoming");
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [confirmCancel, setConfirmCancel] = useState<"selected" | "all" | null>(null);
+  const [isCancelling, startCancelling] = useTransition();
+
+  function toggleSelected(key: string) {
+    setSelectedKeys((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function runCancel(rows: typeof upcoming) {
+    startCancelling(async () => {
+      for (const row of rows) {
+        await cancelOccurrence(row.sourceId, row.key);
+      }
+      setSelectedKeys(new Set());
+      setConfirmCancel(null);
+      upcomingData.refetch();
+    });
+  }
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -270,33 +314,117 @@ export function MemberProfile({
       </div>
 
       <Card className="px-[22px] py-5">
-        <div className="mb-1.5 flex items-center justify-between gap-3.5">
-          <h5 className="text-[15.5px] font-semibold">Session history</h5>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3.5">
+          <div className="flex gap-1 rounded-[11px] border border-divider p-1">
+            {(["upcoming", "completed"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setHistoryTab(t)}
+                className={`rounded-lg px-3.5 py-1.5 text-[13px] capitalize ${historyTab === t ? "bg-row font-semibold text-fg" : "text-muted"}`}
+              >
+                {t} {t === "upcoming" ? `(${upcoming.length})` : ""}
+              </button>
+            ))}
+          </div>
           <Link href="/schedule" className="text-[13px] text-link hover:text-link-hover">
             Open schedule
           </Link>
         </div>
-        {history.length === 0 && (
-          <div className="py-6 text-center text-[13.5px] text-muted">No sessions yet.</div>
+
+        {historyTab === "upcoming" && (
+          <>
+            {upcoming.length > 0 && (
+              <div className="mb-2.5 flex items-center justify-between gap-3.5">
+                <span className="text-[12.5px] text-muted">{selectedKeys.size > 0 ? `${selectedKeys.size} selected` : "Select sessions to cancel them early"}</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={selectedKeys.size === 0 || isCancelling}
+                    onClick={() => setConfirmCancel("selected")}
+                    className="h-8 rounded-full border border-divider px-3.5 text-[12.5px] hover:bg-row disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    Cancel selected
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isCancelling}
+                    onClick={() => setConfirmCancel("all")}
+                    className="h-8 rounded-full border border-bad/40 px-3.5 text-[12.5px] text-bad hover:bg-bad/10 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    Cancel all upcoming
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {confirmCancel && (
+              <div className="mb-2.5 rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">
+                {confirmCancel === "all"
+                  ? `Cancel all ${upcoming.length} upcoming session${upcoming.length === 1 ? "" : "s"} for ${member.name}? This can't be undone.`
+                  : `Cancel ${selectedKeys.size} selected session${selectedKeys.size === 1 ? "" : "s"}? This can't be undone.`}
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={isCancelling}
+                    onClick={() => runCancel(confirmCancel === "all" ? upcoming : upcoming.filter((u) => selectedKeys.has(u.key)))}
+                    className="h-8 rounded-full bg-bad px-3.5 text-[12.5px] font-semibold text-white disabled:opacity-60"
+                  >
+                    {isCancelling ? "Cancelling…" : "Yes, cancel"}
+                  </button>
+                  <button type="button" onClick={() => setConfirmCancel(null)} className="h-8 rounded-full border border-divider px-3.5 text-[12.5px] hover:bg-row">
+                    Never mind
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {upcoming.length === 0 && <div className="py-6 text-center text-[13.5px] text-muted">No upcoming sessions.</div>}
+            {upcoming.map((h, i) => (
+              <div key={`${h.key}-${i}`} className="flex items-center gap-3.5 border-b border-divider py-2.5 last:border-b-0">
+                <input
+                  type="checkbox"
+                  checked={selectedKeys.has(h.key)}
+                  onChange={() => toggleSelected(h.key)}
+                  className="h-4 w-4 flex-none"
+                  aria-label={`Select ${h.type} on ${formatDateShort(new Date(`${h.iso}T00:00:00`))}`}
+                />
+                <span className="w-[112px] flex-none text-[13.5px] tabular-nums text-muted">{formatDateShort(new Date(`${h.iso}T00:00:00`))}</span>
+                <span className="w-[66px] flex-none text-[13px] font-semibold" style={{ color: sessionTypeColor(h.type, dark) }}>
+                  {shortLabel(h.type)}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13.5px]">{h.type}</span>
+                <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{h.coach}</span>
+              </div>
+            ))}
+          </>
         )}
-        {history.map((h, i) => {
-          const label = h.status ?? "Completed";
-          const badgeClass =
-            h.status === "No-show" || h.status === "Late cancel" || h.status === "Cancelled"
-              ? "bg-bad/10 text-bad"
-              : "bg-ok/15 text-ok";
-          return (
-            <div key={`${h.iso}-${h.start}-${i}`} className="flex items-center gap-4 border-b border-divider py-2.5 last:border-b-0">
-              <span className="w-[112px] flex-none text-[13.5px] tabular-nums text-muted">{formatDateShort(new Date(`${h.iso}T00:00:00`))}</span>
-              <span className="w-[66px] flex-none text-[13px] font-semibold" style={{ color: sessionTypeColor(h.type, dark) }}>
-                {shortLabel(h.type)}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[13.5px]">{h.type}</span>
-              <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{h.coach}</span>
-              <span className={`w-24 flex-none rounded-md py-0.5 text-center text-[11.5px] ${badgeClass}`}>{label}</span>
-            </div>
-          );
-        })}
+
+        {historyTab === "completed" && (
+          <>
+            {history.length === 0 && (
+              <div className="py-6 text-center text-[13.5px] text-muted">No sessions yet.</div>
+            )}
+            {history.map((h, i) => {
+              const label = h.status ?? "Completed";
+              const badgeClass =
+                h.status === "No-show" || h.status === "Late cancel" || h.status === "Cancelled"
+                  ? "bg-bad/10 text-bad"
+                  : "bg-ok/15 text-ok";
+              return (
+                <div key={`${h.iso}-${h.start}-${i}`} className="flex items-center gap-4 border-b border-divider py-2.5 last:border-b-0">
+                  <span className="w-[112px] flex-none text-[13.5px] tabular-nums text-muted">{formatDateShort(new Date(`${h.iso}T00:00:00`))}</span>
+                  <span className="w-[66px] flex-none text-[13px] font-semibold" style={{ color: sessionTypeColor(h.type, dark) }}>
+                    {shortLabel(h.type)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[13.5px]">{h.type}</span>
+                  <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{h.coach}</span>
+                  <span className={`w-24 flex-none rounded-md py-0.5 text-center text-[11.5px] ${badgeClass}`}>{label}</span>
+                </div>
+              );
+            })}
+          </>
+        )}
       </Card>
     </div>
   );
