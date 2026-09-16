@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { XIcon } from "@/components/ui/icons";
@@ -13,6 +14,7 @@ import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@
 import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
 import { CreateInvoiceDialog } from "@/components/members/CreateInvoiceDialog";
 import { PurchaseHistoryDialog } from "@/components/members/PurchaseHistoryDialog";
+import { AddMemberDialog } from "@/components/members/AddMemberDialog";
 import { SignWaiverDialog } from "@/components/members/SignWaiverDialog";
 import { WaiverViewDialog } from "@/components/members/WaiverViewDialog";
 import { getWaiverSignaturesForMember, type WaiverSummaryRow } from "@/server/waivers";
@@ -35,12 +37,14 @@ export function MemberProfile({
   candidates: { id: string; name: string }[];
 }) {
   const dark = useThemeStore((s) => s.theme === "dark");
+  const router = useRouter();
   const [addOpen, setAddOpen] = useState(false);
   const [addPick, setAddPick] = useState("");
   const [isPending, startTransition] = useTransition();
   const [unpaidSales, setUnpaidSales] = useState<UnpaidSale[]>([]);
   const [isPayingSale, startPaySale] = useTransition();
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [signWaiverOpen, setSignWaiverOpen] = useState(false);
   const [viewingWaiverId, setViewingWaiverId] = useState<string | null>(null);
@@ -277,7 +281,12 @@ export function MemberProfile({
         </Card>
 
         <Card className="px-[22px] py-5">
-          <h5 className="mb-3 text-[15.5px] font-semibold">Contact</h5>
+          <div className="mb-3 flex items-baseline justify-between gap-2.5">
+            <h5 className="text-[15.5px] font-semibold">Contact</h5>
+            <button type="button" onClick={() => setEditOpen(true)} className="text-[12.5px] text-muted hover:text-fg">
+              Edit
+            </button>
+          </div>
           <div className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1.5 text-[13.5px]">
             <span className="text-muted">Phone</span>
             <span className="tabular-nums">{member.phone}</span>
@@ -289,6 +298,12 @@ export function MemberProfile({
                 <span>{member.gender}</span>
               </>
             )}
+            {member.dateOfBirth && (
+              <>
+                <span className="text-muted">Birthday</span>
+                <span>{formatDateShort(new Date(`${member.dateOfBirth}T00:00:00`))}</span>
+              </>
+            )}
             {(member.address || member.city || member.province || member.postalCode) && (
               <>
                 <span className="text-muted">Address</span>
@@ -298,7 +313,11 @@ export function MemberProfile({
               </>
             )}
             <span className="text-muted">Emergency</span>
-            <span>On file</span>
+            {member.emergencyContactName || member.emergencyContactPhone ? (
+              <span className="min-w-0 text-pretty">{[member.emergencyContactName, member.emergencyContactPhone].filter(Boolean).join(" · ")}</span>
+            ) : (
+              <span className="text-bad">Not on file</span>
+            )}
           </div>
 
           <div className="mt-3.5 border-t border-divider pt-3">
@@ -487,6 +506,7 @@ export function MemberProfile({
       {historyOpen && <PurchaseHistoryDialog memberId={member.id} memberName={member.name} onClose={() => setHistoryOpen(false)} />}
       {signWaiverOpen && <SignWaiverDialog member={member} onClose={() => setSignWaiverOpen(false)} onSigned={refetchWaivers} />}
       {viewingWaiverId && <WaiverViewDialog waiverId={viewingWaiverId} onClose={() => setViewingWaiverId(null)} />}
+      {editOpen && <AddMemberDialog existing={member} onClose={() => setEditOpen(false)} onSaved={() => router.refresh()} />}
     </div>
   );
 }

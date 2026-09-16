@@ -9,6 +9,7 @@ import { addDays, clock, DOW_LABELS, formatDateLong, isoOf, mondayOf, money, mon
 import { useMembers } from "@/lib/useMembers";
 import { useCurrentCoach } from "@/lib/useCoaches";
 import { getRevenueForRange, type DashboardRangeKey } from "@/server/sales";
+import { upcomingBirthdays } from "@/lib/birthdays";
 
 type Range = DashboardRangeKey;
 
@@ -87,6 +88,9 @@ export default function DashboardPage() {
     .filter((m) => m.balance > 0 && (isAdmin || m.coach === coach?.name))
     .sort((a, b) => b.balance - a.balance);
   const outstandingBalance = balanceDue.reduce((a, m) => a + m.balance, 0);
+
+  const myClients = members.filter((m) => isAdmin || m.coach === coach?.name);
+  const birthdays = upcomingBirthdays(myClients, 14, today);
 
   const sessions = sessionsByRange[range];
 
@@ -203,6 +207,21 @@ export default function DashboardPage() {
             </div>
           </Card>
         </div>
+
+        <Card className="flex flex-col gap-3 px-[22px] py-5">
+          <div className="flex items-center justify-between">
+            <h5 className="text-[15.5px] font-semibold">Upcoming birthdays</h5>
+            <span className="text-[12.5px] text-muted">next 14 days</span>
+          </div>
+          {birthdays.map((b) => (
+            <Link key={b.memberId} href={`/members/${b.memberId}`} className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-row">
+              <span className="grid h-[26px] w-[26px] flex-none place-items-center rounded-full bg-row text-[13px]">🎂</span>
+              <span className="min-w-0 flex-1 truncate text-[13.5px]">{b.name}</span>
+              <span className="flex-none text-xs text-muted">{b.daysAway === 0 ? "Today" : b.daysAway === 1 ? "Tomorrow" : `In ${b.daysAway} days`}</span>
+            </Link>
+          ))}
+          {birthdays.length === 0 && <div className="text-[13px] text-pretty text-muted">No birthdays in the next two weeks.</div>}
+        </Card>
       </div>
     </>
   );

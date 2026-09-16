@@ -66,6 +66,10 @@ export interface Member {
   postalCode?: string;
   city?: string;
   province?: string;
+  /** ISO date string ("YYYY-MM-DD"), no time component. */
+  dateOfBirth?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
 }
 
 export type AttendanceStatus = "Checked in" | "No-show" | "Late cancel" | "Cancelled";

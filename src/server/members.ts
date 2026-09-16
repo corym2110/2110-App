@@ -18,6 +18,9 @@ interface MemberRow {
   postalCode: string | null;
   city: string | null;
   province: string | null;
+  dateOfBirth: Date | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
   plan: string;
   since: string;
   coach: { name: string } | null;
@@ -59,6 +62,9 @@ function toMember(row: MemberRow, lastSession: string): Member {
     postalCode: row.postalCode ?? undefined,
     city: row.city ?? undefined,
     province: row.province ?? undefined,
+    dateOfBirth: row.dateOfBirth ? row.dateOfBirth.toISOString().slice(0, 10) : undefined,
+    emergencyContactName: row.emergencyContactName ?? undefined,
+    emergencyContactPhone: row.emergencyContactPhone ?? undefined,
   };
 }
 
@@ -90,6 +96,9 @@ export interface NewMemberInput {
   postalCode?: string;
   city?: string;
   province?: string;
+  dateOfBirth?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
 }
 
 export async function addMember(input: NewMemberInput): Promise<string> {
@@ -116,6 +125,9 @@ export async function addMember(input: NewMemberInput): Promise<string> {
       postalCode: input.postalCode?.trim() || undefined,
       city: input.city?.trim() || undefined,
       province: input.province?.trim() || undefined,
+      dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00Z`) : undefined,
+      emergencyContactName: input.emergencyContactName?.trim() || undefined,
+      emergencyContactPhone: input.emergencyContactPhone?.trim() || undefined,
       plan: "No plan yet",
       since: `${MONTHS_SHORT[now.getMonth()]} ${now.getFullYear()}`,
       coachId: coach?.id,
@@ -125,6 +137,54 @@ export async function addMember(input: NewMemberInput): Promise<string> {
   revalidatePath("/members");
   return row.id;
 }
+
+export interface MemberDetailsInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  gender: string;
+  address?: string;
+  postalCode?: string;
+  city?: string;
+  province?: string;
+  dateOfBirth?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+}
+
+export async function updateMemberDetails(memberId: string, input: MemberDetailsInput): Promise<void> {
+  const firstName = input.firstName.trim();
+  const lastName = input.lastName.trim();
+  const email = input.email.trim();
+  const phone = input.phone.trim();
+  const gender = input.gender.trim();
+  if (!firstName || !lastName || !email || !phone || !gender) {
+    throw new Error("First name, last name, email, phone, and gender are required.");
+  }
+
+  await db.member.update({
+    where: { id: memberId },
+    data: {
+      firstName,
+      lastName,
+      email,
+      phone,
+      gender,
+      address: input.address?.trim() || null,
+      postalCode: input.postalCode?.trim() || null,
+      city: input.city?.trim() || null,
+      province: input.province?.trim() || null,
+      dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00Z`) : null,
+      emergencyContactName: input.emergencyContactName?.trim() || null,
+      emergencyContactPhone: input.emergencyContactPhone?.trim() || null,
+    },
+  });
+
+  revalidatePath("/members");
+  revalidatePath(`/members/${memberId}`);
+}
+
 
 export interface SharedAccountLink {
   id: string;
@@ -284,6 +344,11 @@ export async function mergeMembers(input: MergeMembersInput): Promise<void> {
         postalCode: input.fields.postalCode,
         city: input.fields.city,
         province: input.fields.province,
+        // Not dialog-pickable — the two duplicates are the same real person, so just keep
+        // whichever record already has each value set, preferring the survivor's.
+        dateOfBirth: keep.dateOfBirth ?? remove.dateOfBirth,
+        emergencyContactName: keep.emergencyContactName ?? remove.emergencyContactName,
+        emergencyContactPhone: keep.emergencyContactPhone ?? remove.emergencyContactPhone,
         plan: input.fields.plan,
         since: input.fields.since,
         coachId: input.fields.coachId,

@@ -116,6 +116,9 @@ model Member {
   postalCode    String?
   city          String?
   province      String?
+  dateOfBirth           DateTime?
+  emergencyContactName  String?
+  emergencyContactPhone String?
   plan          String          @default("No plan yet")
   since         String
   coachId       String?
