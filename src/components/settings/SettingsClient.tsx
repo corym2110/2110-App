@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { Toggle } from "@/components/ui/Toggle";
 import { HeaderButton } from "@/components/ui/HeaderButton";
-import { PlusIcon } from "@/components/ui/icons";
+import { PlusIcon, XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useCoachesWithRefetch } from "@/lib/useCoaches";
@@ -17,8 +17,10 @@ import { matchProduct } from "@/data/mock/catalog";
 import { useThemeStore } from "@/stores/theme";
 import { useBusinessSettings, DEFAULT_BUSINESS_SETTINGS } from "@/lib/useBusinessSettings";
 import { saveBusinessSettings, type BusinessSettingsDTO } from "@/server/settings";
+import { CANCELLATION_POLICY, REFUND_POLICY, PRIVACY_POLICY } from "@/data/policies/policies";
+import type { WaiverBlock } from "@/data/waivers/adultLiabilityWaiver";
 
-type Tab = "Facility" | "Staff" | "Services" | "Payments" | "Notifications";
+type Tab = "Facility" | "Staff" | "Services" | "Payments" | "Notifications" | "Policies";
 
 const TAB_LABELS: Record<Tab, string> = {
   Facility: "Business details, hours and booking rules",
@@ -26,7 +28,14 @@ const TAB_LABELS: Record<Tab, string> = {
   Services: "Session types, lengths and pricing",
   Payments: "Tax, terminals and receipts",
   Notifications: "Member reminders and internal alerts",
+  Policies: "Cancellation, refund and privacy policies for reference",
 };
+
+const POLICIES: { name: string; blocks: WaiverBlock[] }[] = [
+  { name: "Cancellation Policy", blocks: CANCELLATION_POLICY },
+  { name: "Refund Policy", blocks: REFUND_POLICY },
+  { name: "Privacy Policy", blocks: PRIVACY_POLICY },
+];
 
 export function SettingsClient() {
   const [tab, setTab] = useState<Tab>("Facility");
@@ -65,10 +74,14 @@ export function SettingsClient() {
     });
   }
 
+  const [openPolicy, setOpenPolicy] = useState<string | null>(null);
+
   useHeaderAction(
-    <HeaderButton onClick={saveChanges} disabled={isSaving}>
-      {isSaving ? "Saving…" : saved ? "Saved" : "Save changes"}
-    </HeaderButton>,
+    tab === "Policies" ? null : (
+      <HeaderButton onClick={saveChanges} disabled={isSaving}>
+        {isSaving ? "Saving…" : saved ? "Saved" : "Save changes"}
+      </HeaderButton>
+    ),
   );
 
   return (
@@ -385,6 +398,49 @@ export function SettingsClient() {
               />
             </label>
           </Card>
+        </div>
+      )}
+
+      {tab === "Policies" && (
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-[18px]">
+          {POLICIES.map((p) => (
+            <Card key={p.name} className="flex flex-col gap-2 px-[22px] py-5">
+              <h5 className="text-[15.5px] font-semibold">{p.name}</h5>
+              <p className="text-[13px] text-pretty text-muted">{p.blocks[0]?.body.slice(0, 120)}…</p>
+              <button
+                type="button"
+                onClick={() => setOpenPolicy(p.name)}
+                className="mt-1 w-fit text-[12.5px] text-link hover:text-link-hover"
+              >
+                Read full policy
+              </button>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {openPolicy && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-black/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && setOpenPolicy(null)}>
+          <div className="popover-shadow flex max-h-[85vh] w-full max-w-[560px] flex-col gap-3.5 overflow-hidden rounded-2xl bg-surface p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="text-lg font-medium tracking-tight">{openPolicy}</div>
+              <button
+                type="button"
+                onClick={() => setOpenPolicy(null)}
+                className="grid h-8 w-8 flex-none place-items-center rounded-lg text-muted hover:bg-row hover:text-fg"
+              >
+                <XIcon size={16} />
+              </button>
+            </div>
+            <div className="-mx-1 flex flex-1 flex-col gap-3 overflow-y-auto px-1 text-[13px]">
+              {POLICIES.find((p) => p.name === openPolicy)?.blocks.map((b, i) => (
+                <div key={i}>
+                  {b.heading && <div className="mb-1 font-semibold">{b.heading}</div>}
+                  <p className="text-pretty text-muted">{b.body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

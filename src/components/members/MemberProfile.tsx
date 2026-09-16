@@ -13,6 +13,9 @@ import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@
 import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
 import { CreateInvoiceDialog } from "@/components/members/CreateInvoiceDialog";
 import { PurchaseHistoryDialog } from "@/components/members/PurchaseHistoryDialog";
+import { SignWaiverDialog } from "@/components/members/SignWaiverDialog";
+import { WaiverViewDialog } from "@/components/members/WaiverViewDialog";
+import { getWaiverSignaturesForMember, type WaiverSummaryRow } from "@/server/waivers";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { addDays, formatDateShort, initialsOf, isoOf, money, slotKey, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
@@ -39,12 +42,20 @@ export function MemberProfile({
   const [isPayingSale, startPaySale] = useTransition();
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [signWaiverOpen, setSignWaiverOpen] = useState(false);
+  const [viewingWaiverId, setViewingWaiverId] = useState<string | null>(null);
+  const [waivers, setWaivers] = useState<WaiverSummaryRow[]>([]);
 
   const coaches = useCoaches();
 
   useEffect(() => {
     getUnpaidSalesForMember(member.id).then(setUnpaidSales);
   }, [member.id]);
+
+  function refetchWaivers() {
+    getWaiverSignaturesForMember(member.id).then(setWaivers);
+  }
+  useEffect(refetchWaivers, [member.id]);
 
   const today = useMemo(() => startOfToday(), []);
   const fromIso = useMemo(() => isoOf(addDays(today, -HISTORY_LOOKBACK_DAYS)), [today]);
@@ -160,6 +171,13 @@ export function MemberProfile({
             className="grid h-[38px] place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row"
           >
             Create invoice
+          </button>
+          <button
+            type="button"
+            onClick={() => setSignWaiverOpen(true)}
+            className="grid h-[38px] place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row"
+          >
+            Sign waiver
           </button>
           <Link
             href={`/pos?member=${encodeURIComponent(member.name)}`}
@@ -281,8 +299,22 @@ export function MemberProfile({
             )}
             <span className="text-muted">Emergency</span>
             <span>On file</span>
-            <span className="text-muted">Waiver</span>
-            <span className="text-ok">Signed</span>
+          </div>
+
+          <div className="mt-3.5 border-t border-divider pt-3">
+            <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Waivers</div>
+            {waivers.length === 0 && <div className="text-[13px] text-bad">Not signed yet</div>}
+            {waivers.map((w) => (
+              <button
+                key={w.id}
+                type="button"
+                onClick={() => setViewingWaiverId(w.id)}
+                className="-mx-1 flex w-[calc(100%+8px)] items-center justify-between gap-2.5 rounded-lg px-1 py-1 text-left text-[13.5px] hover:bg-row"
+              >
+                <span className="min-w-0 truncate text-ok">{w.waiverType}</span>
+                <span className="flex-none text-[12px] text-muted">{formatDateShort(new Date(w.createdAt))}</span>
+              </button>
+            ))}
           </div>
         </Card>
 
@@ -453,6 +485,8 @@ export function MemberProfile({
 
       {invoiceOpen && <CreateInvoiceDialog member={member} onClose={() => setInvoiceOpen(false)} />}
       {historyOpen && <PurchaseHistoryDialog memberId={member.id} memberName={member.name} onClose={() => setHistoryOpen(false)} />}
+      {signWaiverOpen && <SignWaiverDialog member={member} onClose={() => setSignWaiverOpen(false)} onSigned={refetchWaivers} />}
+      {viewingWaiverId && <WaiverViewDialog waiverId={viewingWaiverId} onClose={() => setViewingWaiverId(null)} />}
     </div>
   );
 }
