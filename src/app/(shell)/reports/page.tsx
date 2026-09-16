@@ -9,7 +9,19 @@ import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useMembers } from "@/lib/useMembers";
 import { useCurrentCoach } from "@/lib/useCoaches";
 import { getRealReportsSummary, getSalesRowsForRange, type RealReportsSummary, type ReportRangeKey } from "@/server/sales";
-import { moneyRounded, money } from "@/lib/time";
+import {
+  getRegistrationCohorts,
+  getSalesSummaryByClient,
+  getFirstVisits,
+  getClassUtilization,
+  getDailyAttendanceSummary,
+  type RegistrationCohort,
+  type ClientSalesRow,
+  type FirstVisitRow,
+  type ClassUtilizationSummary,
+  type DailyAttendanceRow,
+} from "@/server/reports";
+import { moneyRounded, money, formatDateShort } from "@/lib/time";
 
 const RANGES: ReportRangeKey[] = ["This week", "This month", "Last 90 days", "Year to date"];
 
@@ -68,6 +80,11 @@ export default function ReportsPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [isExportingCsv, setIsExportingCsv] = useState(false);
   const [summary, setSummary] = useState<RealReportsSummary>(EMPTY_SUMMARY);
+  const [cohorts, setCohorts] = useState<RegistrationCohort[]>([]);
+  const [salesByClient, setSalesByClient] = useState<ClientSalesRow[]>([]);
+  const [firstVisits, setFirstVisits] = useState<FirstVisitRow[]>([]);
+  const [utilization, setUtilization] = useState<ClassUtilizationSummary | null>(null);
+  const [dailyAttendance, setDailyAttendance] = useState<DailyAttendanceRow[]>([]);
   const members = useMembers();
   const coach = useCurrentCoach();
   const isAdmin = coach?.isAdmin ?? false;
@@ -79,8 +96,22 @@ export default function ReportsPage() {
   useEffect(() => {
     if (coach === undefined) return; // still resolving who's signed in
     let cancelled = false;
-    getRealReportsSummary(range, isAdmin ? undefined : coach?.id).then((s) => {
-      if (!cancelled) setSummary(s);
+    const coachId = isAdmin ? undefined : coach?.id;
+    Promise.all([
+      getRealReportsSummary(range, coachId),
+      getRegistrationCohorts(range, coachId),
+      getSalesSummaryByClient(range, coachId),
+      getFirstVisits(range, isAdmin ? undefined : coach?.name),
+      isAdmin ? getClassUtilization(range) : Promise.resolve(null),
+      isAdmin ? getDailyAttendanceSummary(range) : Promise.resolve([]),
+    ]).then(([s, c, sbc, fv, util, daily]) => {
+      if (cancelled) return;
+      setSummary(s);
+      setCohorts(c);
+      setSalesByClient(sbc);
+      setFirstVisits(fv);
+      setUtilization(util);
+      setDailyAttendance(daily);
     });
     return () => {
       cancelled = true;
@@ -258,13 +289,119 @@ export default function ReportsPage() {
           </div>
         </Card>
 
-        <Card className={`px-[22px] py-5 ${isAdmin ? "sm:col-span-2" : ""}`}>
-          <h5 className="mb-1.5 text-[15.5px] font-semibold">Sessions &amp; attendance</h5>
-          <div className="py-6 text-center text-[13.5px] text-pretty text-muted">
-            Not available yet — session counts, utilization, and attendance reporting across the whole business hasn&apos;t
-            been built yet.
+        <Card className="px-[22px] py-5">
+          <div className="mb-1.5 flex items-baseline justify-between gap-3.5">
+            <h5 className="text-[15.5px] font-semibold">Sales by client</h5>
+            <span className="text-[12.5px] text-muted">top {salesByClient.length}</span>
+          </div>
+          {salesByClient.length === 0 && <div className="py-6 text-center text-[13.5px] text-muted">No paid sales in this range yet.</div>}
+          {salesByClient.map((c) => (
+            <Link key={c.memberId} href={`/members/${c.memberId}`} className="flex items-center gap-3.5 border-b border-divider py-2.5 last:border-b-0 hover:text-link">
+              <span className="min-w-0 flex-1 truncate text-[13.5px]">{c.name}</span>
+              <span className="w-14 flex-none text-right text-[12.5px] tabular-nums text-muted">{c.count} sale{c.count === 1 ? "" : "s"}</span>
+              <span className="w-[82px] flex-none text-right text-[13.5px] font-medium tabular-nums">{moneyRounded(c.total)}</span>
+            </Link>
+          ))}
+        </Card>
+
+        <Card className="px-[22px] py-5">
+          <div className="mb-3 flex items-baseline justify-between gap-3.5">
+            <h5 className="text-[15.5px] font-semibold">New clients by month</h5>
+            <span className="text-[12.5px] text-muted">{cohorts.reduce((a, c) => a + c.count, 0)} total</span>
+          </div>
+          {cohorts.length === 0 && <div className="py-6 text-center text-[13.5px] text-muted">No new clients registered in this range.</div>}
+          <div className="flex flex-col gap-2.5">
+            {cohorts.map((c) => {
+              const max = Math.max(1, ...cohorts.map((x) => x.count));
+              return (
+                <div key={c.month} className="min-w-0">
+                  <div className="mb-1 flex items-baseline justify-between gap-3">
+                    <span className="text-[13.5px]">{c.label}</span>
+                    <span className="flex-none text-[12.5px] tabular-nums text-muted">{c.count}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-row">
+                    <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(4, Math.round((c.count / max) * 100))}%` }} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </Card>
+
+        <Card className="px-[22px] py-5">
+          <div className="mb-1.5 flex items-baseline justify-between gap-3.5">
+            <h5 className="text-[15.5px] font-semibold">First visits</h5>
+            <span className="text-[12.5px] text-muted">{firstVisits.length} this range</span>
+          </div>
+          {firstVisits.length === 0 && <div className="py-6 text-center text-[13.5px] text-muted">Nobody had a first session in this range.</div>}
+          {firstVisits.map((v) => (
+            <Link key={v.memberId} href={`/members/${v.memberId}`} className="flex items-center gap-3.5 border-b border-divider py-2.5 last:border-b-0 hover:text-link">
+              <span className="min-w-0 flex-1 truncate text-[13.5px]">{v.name}</span>
+              <span className="flex-none text-[12.5px] tabular-nums text-muted">{formatDateShort(new Date(`${v.iso}T00:00:00`))}</span>
+            </Link>
+          ))}
+        </Card>
+
+        {isAdmin && (
+          <Card className="px-[22px] py-5">
+            <div className="mb-1.5 flex items-baseline justify-between gap-3.5">
+              <h5 className="text-[15.5px] font-semibold">Class utilization</h5>
+              {utilization && <span className="text-[12.5px] text-muted">{utilization.totalSessions} sessions held</span>}
+            </div>
+            {(!utilization || utilization.byClass.length === 0) && (
+              <div className="py-6 text-center text-[13.5px] text-muted">No group classes in this range yet.</div>
+            )}
+            {utilization && utilization.byClass.length > 0 && (
+              <>
+                <div className="mb-3 flex items-baseline justify-between border-b border-divider pb-3">
+                  <span className="text-[13px] text-muted">Overall fill rate</span>
+                  <span className="text-[19px] font-semibold tabular-nums">{utilization.overallFillPct}%</span>
+                </div>
+                {utilization.byClass.map((c) => (
+                  <div key={c.name} className="flex items-center gap-3.5 border-b border-divider py-2.5 last:border-b-0">
+                    <span className="min-w-0 flex-1 truncate text-[13.5px]">{c.name}</span>
+                    <span className="w-20 flex-none text-right text-[12.5px] tabular-nums text-muted">{c.sessions} held</span>
+                    <span className="w-14 flex-none text-right text-[13.5px] font-medium tabular-nums">{c.avgFillPct}%</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </Card>
+        )}
+
+        {isAdmin && (
+          <Card className="px-[22px] py-5 sm:col-span-2">
+            <div className="mb-3 flex items-baseline justify-between gap-3.5">
+              <h5 className="text-[15.5px] font-semibold">Daily attendance</h5>
+              <span className="text-[12.5px] text-muted">
+                {dailyAttendance.reduce((a, d) => a + d.checkedIn, 0)} checked in · {dailyAttendance.reduce((a, d) => a + d.noShow, 0)} no-shows ·{" "}
+                {dailyAttendance.reduce((a, d) => a + d.lateCancel, 0)} late cancels
+              </span>
+            </div>
+            {dailyAttendance.length === 0 && <div className="py-6 text-center text-[13.5px] text-muted">No attendance recorded in this range yet.</div>}
+            {dailyAttendance.length > 0 && (
+              <div className="grid grid-cols-[1fr_70px_70px_70px_80px] gap-3 border-b border-divider px-0.5 py-2 text-[11px] tracking-wider text-muted uppercase">
+                <span>Date</span>
+                <span className="text-right">Checked in</span>
+                <span className="text-right">No-show</span>
+                <span className="text-right">Late cancel</span>
+                <span className="text-right">Scheduled</span>
+              </div>
+            )}
+            {dailyAttendance.slice(0, 14).map((d) => (
+              <div key={d.iso} className="grid grid-cols-[1fr_70px_70px_70px_80px] items-center gap-3 border-b border-divider py-2.5 text-[13.5px] last:border-b-0">
+                <span>{formatDateShort(new Date(`${d.iso}T00:00:00`))}</span>
+                <span className="text-right tabular-nums text-ok">{d.checkedIn}</span>
+                <span className="text-right tabular-nums text-bad">{d.noShow}</span>
+                <span className="text-right tabular-nums text-bad">{d.lateCancel}</span>
+                <span className="text-right tabular-nums text-muted">{d.scheduled}</span>
+              </div>
+            ))}
+            {dailyAttendance.length > 14 && (
+              <div className="pt-2.5 text-center text-[12px] text-muted">Showing the most recent 14 of {dailyAttendance.length} days.</div>
+            )}
+          </Card>
+        )}
       </div>
     </div>
   );
