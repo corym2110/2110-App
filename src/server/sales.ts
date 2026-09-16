@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
+import { getCurrentCoach } from "./coaches";
 
 export interface SaleLineItem {
   description: string;
@@ -220,4 +221,36 @@ export async function getRealReportsSummary(range: ReportRangeKey, coachId?: str
   const outstandingBalance = unpaid.reduce((a, s) => a + Number(s.total), 0);
 
   return { revenue, saleCount: paid.length, newMembers, topSellers, paymentMethods, coachShare, outstandingBalance };
+}
+
+export interface SaleExportRow {
+  date: string;
+  member: string;
+  coach: string;
+  summary: string;
+  method: string;
+  paid: boolean;
+  total: number;
+}
+
+/** Every sale in range for the CSV export — scoped to the signed-in coach's own sales unless they're
+    an admin, resolved from the session itself rather than trusted from the caller. */
+export async function getSalesRowsForRange(range: ReportRangeKey): Promise<SaleExportRow[]> {
+  const requester = await getCurrentCoach();
+  const coachId = requester?.isAdmin ? undefined : requester?.id;
+  const since = rangeStart(range, new Date());
+  const rows = await db.sale.findMany({
+    where: { createdAt: { gte: since }, ...(coachId ? { coachId } : {}) },
+    include: { member: true, coach: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((r) => ({
+    date: r.createdAt.toISOString(),
+    member: r.member ? `${r.member.firstName} ${r.member.lastName}`.trim() : "Walk-in",
+    coach: r.coach?.name ?? "—",
+    summary: r.summary,
+    method: r.method,
+    paid: r.paid,
+    total: Number(r.total),
+  }));
 }

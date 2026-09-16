@@ -8,7 +8,7 @@ import { ExportIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useMembers } from "@/lib/useMembers";
 import { useCurrentCoach } from "@/lib/useCoaches";
-import { getRealReportsSummary, type RealReportsSummary, type ReportRangeKey } from "@/server/sales";
+import { getRealReportsSummary, getSalesRowsForRange, type RealReportsSummary, type ReportRangeKey } from "@/server/sales";
 import { moneyRounded, money } from "@/lib/time";
 
 const RANGES: ReportRangeKey[] = ["This week", "This month", "Last 90 days", "Year to date"];
@@ -30,10 +30,43 @@ const EMPTY_SUMMARY: RealReportsSummary = {
   outstandingBalance: 0,
 };
 
+function csvCell(v: string): string {
+  return `"${v.replace(/"/g, '""')}"`;
+}
+
+function downloadSalesCsv(rows: Awaited<ReturnType<typeof getSalesRowsForRange>>, range: ReportRangeKey) {
+  const header = ["Date", "Member", "Coach", "Description", "Method", "Status", "Amount"];
+  const lines = [header.map(csvCell).join(",")];
+  for (const r of rows) {
+    lines.push(
+      [
+        new Date(r.date).toLocaleDateString(),
+        r.member,
+        r.coach,
+        r.summary,
+        r.method,
+        r.paid ? "Paid" : "Unpaid",
+        r.total.toFixed(2),
+      ]
+        .map((v) => csvCell(String(v)))
+        .join(","),
+    );
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `2110-fitness-sales-${range.toLowerCase().replace(/\s+/g, "-")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export default function ReportsPage() {
   const [range, setRange] = useState<ReportRangeKey>("This week");
   const [exportOpen, setExportOpen] = useState(false);
-  const [exported, setExported] = useState<string | null>(null);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
   const [summary, setSummary] = useState<RealReportsSummary>(EMPTY_SUMMARY);
   const members = useMembers();
   const coach = useCurrentCoach();
@@ -58,33 +91,41 @@ export default function ReportsPage() {
     <div className="relative flex-none">
       <HeaderButton onClick={() => setExportOpen((o) => !o)}>
         <ExportIcon size={15} />
-        {exported ?? "Export"}
+        Export
       </HeaderButton>
       {exportOpen && (
         <div className="popover-shadow absolute right-0 top-11 z-[60] w-[250px] overflow-hidden rounded-xl bg-surface">
           <div className="border-b border-divider px-3.5 py-2.5 text-[11.5px] tracking-wider text-muted uppercase">Export {range.toLowerCase()}</div>
-          {[
-            ["CSV", "CSV", "Rows for every sale in range"],
-            ["Spreadsheet", "XLSX", "Summary and detail tabs"],
-            ["PDF report", "PDF", "Charts and tables as shown"],
-            ["Print", "PRN", "Send to the front desk printer"],
-          ].map(([label, tag, hint]) => (
-            <button
-              key={tag}
-              type="button"
-              onClick={() => {
-                setExportOpen(false);
-                setExported(label === "Print" ? "Sent to printer" : `${label} exported`);
-              }}
-              className="flex w-full items-center gap-2.5 border-b border-divider px-3.5 py-2.5 text-left text-[13.5px] last:border-b-0 hover:bg-row"
-            >
-              <span className="grid h-6 w-6 flex-none place-items-center rounded-md bg-row text-[9.5px] font-bold text-muted">{tag}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block">{label}</span>
-                <span className="block text-[11.5px] text-muted">{hint}</span>
-              </span>
-            </button>
-          ))}
+          <button
+            type="button"
+            disabled={isExportingCsv}
+            onClick={() => {
+              setExportOpen(false);
+              setIsExportingCsv(true);
+              getSalesRowsForRange(range)
+                .then((rows) => downloadSalesCsv(rows, range))
+                .finally(() => setIsExportingCsv(false));
+            }}
+            className="flex w-full items-center gap-2.5 border-b border-divider px-3.5 py-2.5 text-left text-[13.5px] hover:bg-row disabled:opacity-60"
+          >
+            <span className="grid h-6 w-6 flex-none place-items-center rounded-md bg-row text-[9.5px] font-bold text-muted">CSV</span>
+            <span className="min-w-0 flex-1">
+              <span className="block">{isExportingCsv ? "Preparing…" : "CSV"}</span>
+              <span className="block text-[11.5px] text-muted">One row per sale in range</span>
+            </span>
+          </button>
+          <Link
+            href={`/reports/print?range=${encodeURIComponent(range)}`}
+            target="_blank"
+            onClick={() => setExportOpen(false)}
+            className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13.5px] hover:bg-row"
+          >
+            <span className="grid h-6 w-6 flex-none place-items-center rounded-md bg-row text-[9.5px] font-bold text-muted">PDF</span>
+            <span className="min-w-0 flex-1">
+              <span className="block">Print / PDF report</span>
+              <span className="block text-[11.5px] text-muted">Opens a printable summary — save as PDF from there</span>
+            </span>
+          </Link>
         </div>
       )}
     </div>,
