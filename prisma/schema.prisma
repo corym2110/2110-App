@@ -149,8 +149,10 @@ model Sale {
   paid      Boolean  @default(true)
   /** Free-text comment on what this bills for (e.g. "PT sessions Sep 1-15") — shown on the invoice. */
   notes     String?
-  /** Optional itemized breakdown: Array<{ description: string; amount: number }>. Falls back to summary/total when absent. */
+  /** Optional itemized breakdown: Array<{ description: string; quantity: number; unitPrice: number }>. Falls back to summary/total when absent. */
   lineItems Json?
+  /** Tax rate charged on this sale (e.g. 0.05 for 5%), snapshotted from Settings at the time of sale so a later rate change never retroactively alters an old receipt. Null on sales recorded before tax tracking existed. */
+  taxRate   Decimal? @db.Decimal(6, 4)
   createdAt DateTime @default(now())
 }
 

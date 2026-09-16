@@ -1,34 +1,47 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSale } from "@/server/sales";
+import { getBusinessSettings } from "@/server/settings";
+import { parseTaxRate } from "@/lib/tax";
 import { useCoaches } from "@/lib/useCoaches";
+import { money } from "@/lib/time";
 import { XIcon, PlusIcon } from "@/components/ui/icons";
 import type { Member } from "@/types";
 
 interface Row {
   description: string;
-  amount: string;
+  quantity: string;
+  unitPrice: string;
 }
 
 export function CreateInvoiceDialog({ member, onClose }: { member: Member; onClose: () => void }) {
   const router = useRouter();
   const coaches = useCoaches();
-  const [rows, setRows] = useState<Row[]>([{ description: "", amount: "" }]);
+  const [rows, setRows] = useState<Row[]>([{ description: "", quantity: "1", unitPrice: "" }]);
   const [notes, setNotes] = useState("");
+  const [taxRate, setTaxRate] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const parsed = rows.map((r) => ({ description: r.description.trim(), amount: Math.max(0, Number(r.amount) || 0) })).filter((r) => r.description);
-  const total = parsed.reduce((a, r) => a + r.amount, 0);
+  useEffect(() => {
+    getBusinessSettings().then((s) => setTaxRate(parseTaxRate(s.salesTax)));
+  }, []);
+
+  const parsed = rows
+    .map((r) => ({ description: r.description.trim(), quantity: Math.max(1, Math.round(Number(r.quantity) || 1)), unitPrice: Math.max(0, Number(r.unitPrice) || 0) }))
+    .filter((r) => r.description);
+  const subtotal = parsed.reduce((a, r) => a + r.quantity * r.unitPrice, 0);
+  const tax = subtotal * taxRate;
+  const total = subtotal + tax;
   const canSave = parsed.length > 0 && total > 0;
 
   function updateRow(i: number, patch: Partial<Row>) {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   }
   function addRow() {
-    setRows((rs) => [...rs, { description: "", amount: "" }]);
+    setRows((rs) => [...rs, { description: "", quantity: "1", unitPrice: "" }]);
   }
   function removeRow(i: number) {
     setRows((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs));
@@ -51,6 +64,7 @@ export function CreateInvoiceDialog({ member, onClose }: { member: Member; onClo
           paid: false,
           notes: notes.trim() || undefined,
           lineItems: parsed,
+          taxRate,
         });
         onClose();
         router.push(`/invoices/${id}`);
@@ -83,14 +97,23 @@ export function CreateInvoiceDialog({ member, onClose }: { member: Member; onClo
                 placeholder="e.g. PT session Sep 3"
                 className="h-10 min-w-0 flex-1 rounded-lg border border-divider bg-transparent px-2.5 text-sm"
               />
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={r.quantity}
+                onChange={(e) => updateRow(i, { quantity: e.target.value })}
+                title="Quantity"
+                className="h-10 w-14 flex-none rounded-lg border border-divider bg-transparent px-2 text-center text-sm tabular-nums"
+              />
               <div className="flex h-10 w-28 flex-none items-center rounded-lg border border-divider px-2.5 text-sm">
                 <span className="mr-1 text-muted">$</span>
                 <input
                   type="number"
                   min={0}
                   step={5}
-                  value={r.amount}
-                  onChange={(e) => updateRow(i, { amount: e.target.value })}
+                  value={r.unitPrice}
+                  onChange={(e) => updateRow(i, { unitPrice: e.target.value })}
                   placeholder="0.00"
                   className="min-w-0 flex-1 bg-transparent tabular-nums outline-none"
                 />
@@ -123,9 +146,19 @@ export function CreateInvoiceDialog({ member, onClose }: { member: Member; onClo
           />
         </label>
 
-        <div className="flex items-center justify-between border-t border-divider pt-3">
-          <span className="text-[13px] text-muted">Total due</span>
-          <span className="text-[17px] font-semibold tabular-nums">${total.toFixed(2)}</span>
+        <div className="flex flex-col gap-1 border-t border-divider pt-3 text-[13px]">
+          <div className="flex items-center justify-between text-muted">
+            <span>Subtotal</span>
+            <span className="tabular-nums">{money(subtotal)}</span>
+          </div>
+          <div className="flex items-center justify-between text-muted">
+            <span>Tax ({(taxRate * 100).toFixed(taxRate * 100 === Math.round(taxRate * 100) ? 0 : 2)}%)</span>
+            <span className="tabular-nums">{money(tax)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] font-medium">Total due</span>
+            <span className="text-[17px] font-semibold tabular-nums">{money(total)}</span>
+          </div>
         </div>
 
         {error && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">{error}</div>}

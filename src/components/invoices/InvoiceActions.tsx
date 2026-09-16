@@ -15,7 +15,7 @@ export function PrintButton() {
   );
 }
 
-export function InvoiceNotes({ saleId, initialNotes }: { saleId: string; initialNotes: string | null }) {
+export function InvoiceNotes({ saleId, initialNotes, label = "What this bills for" }: { saleId: string; initialNotes: string | null; label?: string }) {
   const [editing, setEditing] = useState(false);
   const [notes, setNotes] = useState(initialNotes ?? "");
   const [saved, setSaved] = useState(initialNotes);
@@ -33,7 +33,7 @@ export function InvoiceNotes({ saleId, initialNotes }: { saleId: string; initial
     return (
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] tracking-wider text-muted uppercase">What this bills for</div>
+          <div className="text-[11px] tracking-wider text-muted uppercase">{label}</div>
           <p className="mt-1 text-pretty text-[13.5px]">{saved || <span className="text-muted">No comment added.</span>}</p>
         </div>
         <button type="button" onClick={() => setEditing(true)} className="print:hidden flex-none text-[12.5px] text-link hover:text-link-hover">
@@ -45,7 +45,7 @@ export function InvoiceNotes({ saleId, initialNotes }: { saleId: string; initial
 
   return (
     <div className="print:hidden">
-      <div className="text-[11px] tracking-wider text-muted uppercase">What this bills for</div>
+      <div className="text-[11px] tracking-wider text-muted uppercase">{label}</div>
       <textarea
         autoFocus
         value={notes}

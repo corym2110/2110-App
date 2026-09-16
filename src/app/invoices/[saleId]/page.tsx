@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { getInvoice } from "@/server/sales";
 import { getBusinessSettings } from "@/server/settings";
-import { money, formatDateLong } from "@/lib/time";
+import { money, formatDateTime } from "@/lib/time";
 import { PrintButton, InvoiceNotes } from "@/components/invoices/InvoiceActions";
 
 export const dynamic = "force-dynamic";
+
+function signedMoney(n: number): string {
+  return n < 0 ? `-${money(Math.abs(n))}` : money(n);
+}
 
 export default async function InvoicePage({ params }: { params: Promise<{ saleId: string }> }) {
   const { saleId } = await params;
@@ -19,13 +23,22 @@ export default async function InvoicePage({ params }: { params: Promise<{ saleId
   }
 
   const invoiceNumber = invoice.id.slice(-8).toUpperCase();
-  const lines = invoice.lineItems && invoice.lineItems.length > 0 ? invoice.lineItems : [{ description: invoice.summary, amount: invoice.total }];
+  const lines = invoice.lineItems && invoice.lineItems.length > 0 ? invoice.lineItems : [{ description: invoice.summary, quantity: 1, unitPrice: invoice.total }];
+  const subtotal = invoice.taxRate != null ? invoice.total / (1 + invoice.taxRate) : null;
+  const tax = subtotal != null ? invoice.total - subtotal : null;
+
+  const [wordmarkFirst, ...wordmarkRest] = settings.businessName.split(" ");
 
   return (
     <div className="min-h-screen bg-bg px-5 py-10 text-fg print:bg-white print:px-0 print:py-0 print:text-black">
-      {/* Printing (Save as PDF included) should always look like a light, ink-friendly document,
-          regardless of whoever's dark/light theme preference is currently active on screen. */}
+      {/* Printing (Save as PDF included) should always look like a clean, ink-friendly document at a
+          real paper width — not the on-screen app's card floating on a wide layout — regardless of
+          the viewer's dark/light theme or how wide their browser window happens to be. */}
       <style>{`
+        @page {
+          size: letter;
+          margin: 0.65in;
+        }
         @media print {
           html[data-theme="dark"] {
             --app-bg: #f4f3ef;
@@ -39,7 +52,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ saleId
           }
         }
       `}</style>
-      <div className="mx-auto flex max-w-[680px] flex-col gap-5">
+      <div className="mx-auto flex max-w-[560px] flex-col gap-5">
         <div className="print:hidden flex items-center justify-between gap-3">
           {invoice.member ? (
             <Link href={`/members/${invoice.member.id}`} className="text-[13.5px] text-muted hover:text-fg">
@@ -51,71 +64,107 @@ export default async function InvoicePage({ params }: { params: Promise<{ saleId
           <PrintButton />
         </div>
 
-        <div className="rounded-2xl border border-divider bg-surface px-8 py-9 print:border-0 print:p-0 print:shadow-none">
-          <div className="flex flex-wrap items-start justify-between gap-5 border-b border-divider pb-6">
-            <div>
-              <div className="text-[20px] font-semibold tracking-tight">{settings.businessName}</div>
-              <div className="mt-1 text-[13px] text-pretty text-muted">{settings.address}</div>
-              <div className="text-[13px] text-muted">{settings.phone}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-[26px] font-semibold tracking-tight">Invoice</div>
-              <div className="mt-1 text-[12.5px] tabular-nums text-muted">#{invoiceNumber}</div>
-              <div className="text-[12.5px] tabular-nums text-muted">{formatDateLong(new Date(invoice.createdAt))}</div>
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap items-start justify-between gap-5">
-            <div>
-              <div className="text-[11px] tracking-wider text-muted uppercase">Billed to</div>
-              {invoice.member ? (
+        <div className="px-1 print:px-0">
+          <div className="flex flex-col items-center gap-1 pb-2 pt-8 text-center print:pt-12">
+            <div className="text-[36px] leading-[0.82] font-black tracking-tight uppercase">
+              {wordmarkFirst}
+              {wordmarkRest.length > 0 && (
                 <>
-                  <div className="mt-1 text-[14.5px] font-medium">{invoice.member.name}</div>
-                  <div className="text-[13px] text-muted">{invoice.member.email}</div>
-                  <div className="text-[13px] text-muted">{invoice.member.phone}</div>
-                  {(invoice.member.address || invoice.member.city) && (
-                    <div className="text-[13px] text-pretty text-muted">
-                      {[invoice.member.address, invoice.member.city, invoice.member.province, invoice.member.postalCode].filter(Boolean).join(", ")}
-                    </div>
-                  )}
+                  <br />
+                  {wordmarkRest.join(" ")}
                 </>
-              ) : (
-                <div className="mt-1 text-[14.5px]">Walk-in</div>
               )}
             </div>
-            <div className="text-right">
-              <div className="text-[11px] tracking-wider text-muted uppercase">Status</div>
-              <div className={`mt-1 inline-block rounded-full px-3 py-1 text-[12.5px] font-semibold ${invoice.paid ? "bg-ok/15 text-ok" : "bg-bad/10 text-bad"}`}>
-                {invoice.paid ? "Paid" : "Unpaid — due"}
-              </div>
-              {invoice.coach && <div className="mt-2 text-[12.5px] text-muted">Coach: {invoice.coach.name}</div>}
+            <div className="mt-1.5 text-[13.5px] font-semibold">{settings.businessName}</div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap justify-between gap-6 border-t border-divider pt-5 text-[12.5px]">
+            <div>
+              <div className="font-bold">{settings.businessName}</div>
+              <div className="text-pretty text-muted">{settings.address}</div>
+              <div className="text-muted">{settings.phone}</div>
+            </div>
+            <div>
+              <div className="font-bold">Client address</div>
+              {invoice.member ? (
+                <>
+                  <div>{invoice.member.name}</div>
+                  <div className="text-muted">{invoice.member.email}</div>
+                </>
+              ) : (
+                <div>Walk-in</div>
+              )}
             </div>
           </div>
 
-          <div className="mt-7">
-            <div className="grid grid-cols-[1fr_120px] gap-3 border-b border-divider pb-2 text-[11px] tracking-wider text-muted uppercase">
-              <span>Description</span>
-              <span className="text-right">Amount</span>
+          <div className="mt-6">
+            <div className="grid grid-cols-[1fr_70px_100px] gap-3 border-b-2 border-fg pb-2 text-[11px] font-semibold tracking-wider uppercase">
+              <span>Item</span>
+              <span className="text-center">Quantity</span>
+              <span className="text-right">Total</span>
             </div>
             {lines.map((li, i) => (
-              <div key={i} className="grid grid-cols-[1fr_120px] gap-3 border-b border-divider py-3 text-[13.5px] last:border-b-0">
-                <span className="text-pretty">{li.description}</span>
-                <span className="text-right tabular-nums">{money(li.amount)}</span>
+              <div key={i} className="grid grid-cols-[1fr_70px_100px] gap-3 border-b border-divider py-3 text-[13.5px]">
+                <span className="font-semibold text-pretty">{li.description}</span>
+                <span className="text-center tabular-nums text-muted">{li.quantity}</span>
+                <span className="text-right tabular-nums">{signedMoney(li.quantity * li.unitPrice)}</span>
               </div>
             ))}
-            <div className="flex items-center justify-end gap-4 pt-4">
-              <span className="text-[14.5px] font-semibold">Total due</span>
-              <span className="text-[19px] font-semibold tabular-nums">{money(invoice.total)}</span>
+          </div>
+
+          <div className="mt-4 flex flex-col items-end gap-1 text-[13.5px]">
+            {subtotal != null && tax != null && (
+              <>
+                <div className="flex w-[220px] justify-between text-muted">
+                  <span>Subtotal</span>
+                  <span className="tabular-nums">{money(subtotal)}</span>
+                </div>
+                <div className="flex w-[220px] justify-between text-muted">
+                  <span>Tax</span>
+                  <span className="tabular-nums">{money(tax)}</span>
+                </div>
+              </>
+            )}
+            <div className="flex w-[220px] justify-between border-t border-divider pt-1.5 text-[15px] font-bold">
+              <span>Total amount</span>
+              <span className="tabular-nums">{money(invoice.total)}</span>
             </div>
           </div>
 
-          <div className="mt-7 border-t border-divider pt-5">
-            <InvoiceNotes saleId={invoice.id} initialNotes={invoice.notes} />
+          <div className="mt-6 flex flex-col gap-1 border-t border-divider pt-5 text-[13px]">
+            <div className="flex gap-2">
+              <span className="font-semibold">Purchase number:</span>
+              <span className="tabular-nums text-accent">{invoiceNumber}</span>
+            </div>
+            <div className="flex gap-2">
+              <span className="font-semibold">Purchase date:</span>
+              <span className="tabular-nums text-accent">{formatDateTime(new Date(invoice.createdAt))}</span>
+            </div>
           </div>
 
-          <div className="mt-7 border-t border-divider pt-4 text-[12px] text-muted">
-            Payment method on file: {invoice.method}. Questions about this invoice? Contact {settings.businessName} at {settings.phone}.
+          <div className="mt-6 border-t border-divider pt-5 text-[13px]">
+            {invoice.paid ? (
+              <>
+                <div className="font-semibold">Payment method</div>
+                <div className="mt-1 text-accent">
+                  {invoice.method} — {money(invoice.total)}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="font-semibold text-bad">Balance due</div>
+                <div className="mt-1 text-bad">
+                  {money(invoice.total)} — payable via {invoice.method}
+                </div>
+              </>
+            )}
           </div>
+
+          <div className="mt-6 border-t border-divider pt-5">
+            <InvoiceNotes saleId={invoice.id} initialNotes={invoice.notes} label={invoice.paid ? "Receipt notes" : "What this bills for"} />
+          </div>
+
+          <div className="mt-8 border-t border-divider pt-5 text-center text-[12.5px] text-muted">Thanks for visiting {settings.businessName}!</div>
         </div>
       </div>
     </div>

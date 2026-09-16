@@ -41,7 +41,13 @@ export default async function ReportsPrintPage({ searchParams }: { searchParams:
 
   return (
     <div className="min-h-screen bg-bg px-5 py-10 text-fg print:bg-white print:px-0 print:py-0 print:text-black">
+      {/* Same reasoning as the invoice page: printing should always be a clean, real-paper-width
+          document, not the on-screen wide layout, regardless of theme or browser window size. */}
       <style>{`
+        @page {
+          size: letter;
+          margin: 0.65in;
+        }
         @media print {
           html[data-theme="dark"] {
             --app-bg: #f4f3ef;
@@ -56,7 +62,7 @@ export default async function ReportsPrintPage({ searchParams }: { searchParams:
         }
       `}</style>
 
-      <div className="mx-auto flex max-w-[760px] flex-col gap-5">
+      <div className="mx-auto flex max-w-[760px] flex-col gap-5 print:max-w-[6.5in]">
         <div className="print:hidden flex items-center justify-between gap-3">
           <Link href="/reports" className="text-[13.5px] text-muted hover:text-fg">
             ← Back to Reports
@@ -64,7 +70,7 @@ export default async function ReportsPrintPage({ searchParams }: { searchParams:
           <PrintButton />
         </div>
 
-        <div className="rounded-2xl border border-divider bg-surface px-8 py-9 print:border-0 print:p-0 print:shadow-none">
+        <div className="rounded-2xl border border-divider bg-surface px-8 py-9 print:border-0 print:px-0 print:py-9 print:shadow-none">
           <div className="flex flex-wrap items-start justify-between gap-5 border-b border-divider pb-6">
             <div>
               <div className="text-[20px] font-semibold tracking-tight">{settings.businessName}</div>

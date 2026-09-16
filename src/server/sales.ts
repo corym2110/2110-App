@@ -3,16 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
+import { getBusinessSettings } from "./settings";
+import { parseTaxRate } from "@/lib/tax";
 
 export interface SaleLineItem {
   description: string;
-  amount: number;
+  quantity: number;
+  unitPrice: number;
 }
 
 export interface NewSaleInput {
   memberId?: string;
   coachId?: string;
   summary: string;
+  /** Final amount actually charged, tax included — the single source of truth for what the customer paid. */
   total: number;
   method: string;
   /** false = invoice the member now, pay later (adds to their balance due). */
@@ -20,9 +24,12 @@ export interface NewSaleInput {
   /** What this bills for (e.g. "PT sessions Sep 1-15") — shown on the invoice. */
   notes?: string;
   lineItems?: SaleLineItem[];
+  /** Tax rate to snapshot on this sale (e.g. 0.05). Defaults to the current Settings tax rate when omitted. */
+  taxRate?: number;
 }
 
 export async function createSale(input: NewSaleInput): Promise<string> {
+  const taxRate = input.taxRate ?? parseTaxRate((await getBusinessSettings()).salesTax);
   const row = await db.sale.create({
     data: {
       memberId: input.memberId || undefined,
@@ -33,6 +40,7 @@ export async function createSale(input: NewSaleInput): Promise<string> {
       paid: input.paid,
       notes: input.notes?.trim() || undefined,
       lineItems: input.lineItems ? (input.lineItems as object) : undefined,
+      taxRate,
     },
   });
   if (input.memberId) revalidatePath(`/members/${input.memberId}`);
@@ -85,6 +93,7 @@ export interface InvoiceData {
   paid: boolean;
   notes: string | null;
   lineItems: SaleLineItem[] | null;
+  taxRate: number | null;
   createdAt: string;
   member: { id: string; name: string; email: string; phone: string; address: string | null; city: string | null; province: string | null; postalCode: string | null } | null;
   coach: { name: string } | null;
@@ -104,6 +113,7 @@ export async function getInvoice(saleId: string): Promise<InvoiceData | null> {
     paid: row.paid,
     notes: row.notes,
     lineItems: (row.lineItems as SaleLineItem[] | null) ?? null,
+    taxRate: row.taxRate != null ? Number(row.taxRate) : null,
     createdAt: row.createdAt.toISOString(),
     member: row.member
       ? {

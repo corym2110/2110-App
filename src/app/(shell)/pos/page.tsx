@@ -12,6 +12,8 @@ import { useMembers } from "@/lib/useMembers";
 import { useCoaches } from "@/lib/useCoaches";
 import { getSharedAccountLinks, type SharedAccountLink } from "@/server/members";
 import { createSale } from "@/server/sales";
+import { getBusinessSettings } from "@/server/settings";
+import { parseTaxRate } from "@/lib/tax";
 import { CATALOG, matchProduct } from "@/data/mock/catalog";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { useThemeStore } from "@/stores/theme";
@@ -51,6 +53,11 @@ function POSInner() {
   const [receipt, setReceipt] = useState<string | null>(null);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [taxRate, setTaxRate] = useState(0.05);
+
+  useEffect(() => {
+    getBusinessSettings().then((s) => setTaxRate(parseTaxRate(s.salesTax)));
+  }, []);
 
   const member = chosenMember ?? members.find((m) => m.name === initialMemberName)?.id ?? "";
   const setMember = (id: string) => setChosenMember(id);
@@ -110,7 +117,7 @@ function POSInner() {
   const discRaw = Math.max(0, Number(discValue) || 0);
   const discAmt = Math.min(gross, discMode === "%" ? gross * (Math.min(100, discRaw) / 100) : discRaw);
   const subtotal = gross - discAmt;
-  const tax = subtotal * 0.05;
+  const tax = subtotal * taxRate;
   const total = subtotal + tax;
   const needsAmount = lines.some((p) => p.variablePrice && !unitPrice(p));
 
@@ -334,7 +341,7 @@ function POSInner() {
             )}
             <span className="text-muted">Subtotal</span>
             <span className="text-right">{money(subtotal)}</span>
-            <span className="text-muted">GST (5%)</span>
+            <span className="text-muted">Tax ({(taxRate * 100).toFixed(taxRate * 100 === Math.round(taxRate * 100) ? 0 : 2)}%)</span>
             <span className="text-right">{money(tax)}</span>
             <span className="text-[17px] font-semibold">Total</span>
             <span className="text-right text-[17px] font-semibold">{money(total)}</span>
@@ -371,6 +378,8 @@ function POSInner() {
             onClick={() => {
               setSaleError(null);
               const summary = lines.map((p) => (cart[p.id] > 1 ? `${p.name} x${cart[p.id]}` : p.name)).join(", ");
+              const lineItems = lines.map((p) => ({ description: p.name, quantity: cart[p.id], unitPrice: unitPrice(p) }));
+              if (discAmt > 0) lineItems.push({ description: "Discount", quantity: 1, unitPrice: -discAmt });
               startTransition(async () => {
                 try {
                   await createSale({
@@ -380,6 +389,8 @@ function POSInner() {
                     total,
                     method: invoiceUnpaid ? "Invoice" : method,
                     paid: !invoiceUnpaid,
+                    lineItems,
+                    taxRate,
                   });
                   setReceipt(invoiceUnpaid ? `${money(total)} added to ${memberName}'s account` : `${money(total)} charged to ${memberName}`);
                   setCart({});

@@ -54,6 +54,14 @@ export function formatDateLong(date: Date): string {
   return `${DOW_FULL[dowIndex(date)]}, ${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
 
+export function formatDateTime(date: Date): string {
+  let h = date.getHours();
+  const ampm = h >= 12 ? "pm" : "am";
+  h = h % 12 || 12;
+  const m = String(date.getMinutes()).padStart(2, "0");
+  return `${formatDateShort(date)} ${String(h).padStart(2, "0")}:${m}${ampm}`;
+}
+
 export function money(n: number): string {
   return `$${n.toFixed(2)}`;
 }
