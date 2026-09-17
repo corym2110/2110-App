@@ -42,7 +42,9 @@ function POSInner() {
 
   const [category, setCategory] = useState<Product["category"]>("Personal Training");
   const [query, setQuery] = useState("");
-  const [cart, setCart] = useState<Record<string, number>>(preselect ? { [preselect.id]: 1 } : {});
+  const [cart, setCart] = useState<Record<string, number>>(
+    preselect ? { [preselect.id]: Math.max(1, Number(params.get("qty")) || 1) } : {},
+  );
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
   /** Selected member's id, or "" for Walk-in. null = not yet chosen, fall back to the ?member= query param once members load. */

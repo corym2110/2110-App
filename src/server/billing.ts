@@ -2,10 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
-import { getCurrentCoach } from "./coaches";
 import { getOccurrencesForRange } from "./schedule";
-import { getBusinessSettings } from "./settings";
-import { parseTaxRate } from "@/lib/tax";
 import { sessionTypeByName } from "@/data/mock/sessionTypes";
 import { PREBILL_TYPES, type PreBillType } from "@/lib/prebill";
 import { addDays, isoOf } from "@/lib/time";
@@ -89,73 +86,6 @@ export async function getBillableTally(periodFrom: string, periodTo: string): Pr
   return [...byMember.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export interface BillEntryInput {
-  memberId: string;
-  coachId?: string;
-  method: string;
-  paid: boolean;
-  items: { sessionType: PreBillType; unitPrice: number; occurrenceKeys: string[] }[];
-}
-
-/** Creates one pre-bill Sale per entry and a SessionCredit for every individual session unit,
-    auto-applied to the occurrence it was tallied against — this link is what lets the app always
-    know which sessions are already paid for. Admin-only: this moves real money in bulk. */
-export async function billPeriod(periodFrom: string, periodTo: string, entries: BillEntryInput[]): Promise<{ saleIds: string[] }> {
-  const requester = await getCurrentCoach();
-  if (!requester?.isAdmin) throw new Error("Only an admin can run a billing period.");
-
-  const taxRate = parseTaxRate((await getBusinessSettings()).salesTax);
-  const saleIds: string[] = [];
-
-  for (const entry of entries) {
-    const lineItems = entry.items.map((i) => ({
-      description: `${i.sessionType} sessions, ${periodFrom} to ${periodTo}`,
-      quantity: i.occurrenceKeys.length,
-      unitPrice: i.unitPrice,
-    }));
-    const subtotal = lineItems.reduce((a, i) => a + i.quantity * i.unitPrice, 0);
-    const total = subtotal * (1 + taxRate);
-    const summary = entry.items.map((i) => `${i.occurrenceKeys.length} ${i.sessionType}`).join(", ");
-
-    const saleId = await db.$transaction(async (tx) => {
-      const sale = await tx.sale.create({
-        data: {
-          memberId: entry.memberId,
-          coachId: entry.coachId || undefined,
-          summary,
-          total,
-          method: entry.method,
-          paid: entry.paid,
-          taxRate,
-          lineItems,
-          periodFrom,
-          periodTo,
-        },
-      });
-      for (const item of entry.items) {
-        for (const key of item.occurrenceKeys) {
-          await tx.sessionCredit.create({
-            data: {
-              saleId: sale.id,
-              memberId: entry.memberId,
-              sessionType: item.sessionType,
-              unitPrice: item.unitPrice,
-              appliedOccurrenceKey: key,
-              appliedIso: isoFromOccurrenceKey(key),
-            },
-          });
-        }
-      }
-      return sale.id;
-    });
-    saleIds.push(saleId);
-  }
-
-  revalidatePath("/members");
-  revalidatePath("/reports");
-  revalidatePath("/billing");
-  return { saleIds };
-}
 
 /** Same reconciliation as a period pre-bill, but for a single ad-hoc POS sale of Personal
     Training / Group Training sessions — auto-applies one credit per unit purchased to the

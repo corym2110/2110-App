@@ -12,7 +12,19 @@ const UNPAID = "__unpaid__";
     covers this specific occurrence for this specific member, and lets staff switch it to a
     different unapplied credit (or back to Unpaid) right from the calendar, mirroring the
     reconciliation control that otherwise only lives in the member's "Session credits" dialog. */
-export function PaidWithControl({ occurrenceKey, memberId, sessionType }: { occurrenceKey: string; memberId: string; sessionType: string }) {
+export function PaidWithControl({
+  occurrenceKey,
+  memberId,
+  memberName,
+  coachName,
+  sessionType,
+}: {
+  occurrenceKey: string;
+  memberId: string;
+  memberName: string;
+  coachName: string;
+  sessionType: string;
+}) {
   const [info, setInfo] = useState<OccurrenceCreditInfo | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -37,7 +49,10 @@ export function PaidWithControl({ occurrenceKey, memberId, sessionType }: { occu
       <div className="mb-1.5 flex items-baseline justify-between">
         <span className="text-xs tracking-wider text-muted uppercase">Paid with</span>
         {!info.applied && info.availableCredits.length === 0 && (
-          <Link href="/billing" className="text-[11.5px] text-link hover:text-link-hover">
+          <Link
+            href={`/pos?member=${encodeURIComponent(memberName)}&type=${encodeURIComponent(sessionType)}&coach=${encodeURIComponent(coachName)}`}
+            className="text-[11.5px] text-link hover:text-link-hover"
+          >
             Bill this client →
           </Link>
         )}

@@ -114,7 +114,13 @@ export function DetailPanel({
             </div>
           </div>
           {member && (PREBILL_TYPES as readonly string[]).includes(occurrence.type) && (
-            <PaidWithControl occurrenceKey={occurrence.key} memberId={member.id} sessionType={occurrence.type} />
+            <PaidWithControl
+              occurrenceKey={occurrence.key}
+              memberId={member.id}
+              memberName={member.name}
+              coachName={coachDisplayName}
+              sessionType={occurrence.type}
+            />
           )}
           {member && (
             <Link
