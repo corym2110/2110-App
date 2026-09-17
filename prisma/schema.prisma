@@ -127,6 +127,7 @@ model Member {
   beneficiaryOf SharedAccount[] @relation("Beneficiary")
   sales         Sale[]
   waivers       WaiverSignature[]
+  sessionCredits SessionCredit[]
   createdAt     DateTime        @default(now())
 }
 
@@ -178,7 +179,34 @@ model Sale {
   lineItems Json?
   /** Tax rate charged on this sale (e.g. 0.05 for 5%), snapshotted from Settings at the time of sale so a later rate change never retroactively alters an old receipt. Null on sales recorded before tax tracking existed. */
   taxRate   Decimal? @db.Decimal(6, 4)
+  /** Pre-billing period this sale covers (e.g. "2026-09-16" to "2026-09-30"), set only for period pre-bills. */
+  periodFrom String?
+  periodTo   String?
+  sessionCredits SessionCredit[]
   createdAt DateTime @default(now())
+}
+
+/** One purchased session unit from a period pre-bill (Personal Training / Group Training).
+    `appliedOccurrenceKey` links it to a specific scheduled session — that link is what makes
+    reconciliation possible (the app always knows which sessions are already paid for) — but it's
+    a plain nullable field, not a hard foreign key, since occurrences from a recurring series are
+    computed dates, not persisted rows. Null means the credit is purchased but not yet applied to
+    any session, which staff can do manually (or re-apply to a different session) at any time. */
+model SessionCredit {
+  id                   String   @id @default(cuid())
+  saleId               String
+  sale                 Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  memberId             String
+  member               Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  sessionType          String
+  unitPrice            Decimal  @db.Decimal(10, 2)
+  appliedOccurrenceKey String?
+  appliedIso           String?
+  createdAt            DateTime @default(now())
+
+  @@index([memberId])
+  @@index([saleId])
+  @@index([appliedOccurrenceKey])
 }
 
 /** Custom session types an admin adds beyond the six built-in ones (Personal Training, Group

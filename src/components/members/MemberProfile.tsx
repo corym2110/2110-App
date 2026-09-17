@@ -18,6 +18,9 @@ import { AddMemberDialog } from "@/components/members/AddMemberDialog";
 import { SignWaiverDialog } from "@/components/members/SignWaiverDialog";
 import { WaiverViewDialog } from "@/components/members/WaiverViewDialog";
 import { getWaiverSignaturesForMember, type WaiverSummaryRow } from "@/server/waivers";
+import { SessionCreditsDialog } from "@/components/members/SessionCreditsDialog";
+import { getSessionCreditsForMember, type SessionCreditRow } from "@/server/billing";
+import { PREBILL_TYPES } from "@/lib/prebill";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { addDays, formatDateShort, initialsOf, isoOf, money, slotKey, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
@@ -49,6 +52,8 @@ export function MemberProfile({
   const [signWaiverOpen, setSignWaiverOpen] = useState(false);
   const [viewingWaiverId, setViewingWaiverId] = useState<string | null>(null);
   const [waivers, setWaivers] = useState<WaiverSummaryRow[]>([]);
+  const [credits, setCredits] = useState<SessionCreditRow[]>([]);
+  const [creditsOpen, setCreditsOpen] = useState(false);
 
   const coaches = useCoaches();
 
@@ -60,6 +65,12 @@ export function MemberProfile({
     getWaiverSignaturesForMember(member.id).then(setWaivers);
   }
   useEffect(refetchWaivers, [member.id]);
+
+  function refetchCredits() {
+    getSessionCreditsForMember(member.id).then(setCredits);
+  }
+  useEffect(refetchCredits, [member.id]);
+  const paidOccurrenceKeys = new Set(credits.map((c) => c.appliedOccurrenceKey).filter((k): k is string => !!k));
 
   const today = useMemo(() => startOfToday(), []);
   const fromIso = useMemo(() => isoOf(addDays(today, -HISTORY_LOOKBACK_DAYS)), [today]);
@@ -182,6 +193,13 @@ export function MemberProfile({
             className="grid h-[38px] place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row"
           >
             Sign waiver
+          </button>
+          <button
+            type="button"
+            onClick={() => setCreditsOpen(true)}
+            className="grid h-[38px] place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row"
+          >
+            Session credits
           </button>
           <Link
             href={`/pos?member=${encodeURIComponent(member.name)}`}
@@ -469,6 +487,11 @@ export function MemberProfile({
                   {shortLabel(h.type)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[13.5px]">{h.type}</span>
+                {(PREBILL_TYPES as readonly string[]).includes(h.type) && (
+                  <span className={`w-[64px] flex-none text-right text-[11.5px] ${paidOccurrenceKeys.has(h.key) ? "text-ok" : "text-bad"}`}>
+                    {paidOccurrenceKeys.has(h.key) ? "Paid" : "Unpaid"}
+                  </span>
+                )}
                 <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{h.coach}</span>
               </div>
             ))}
@@ -507,6 +530,17 @@ export function MemberProfile({
       {signWaiverOpen && <SignWaiverDialog member={member} onClose={() => setSignWaiverOpen(false)} onSigned={refetchWaivers} />}
       {viewingWaiverId && <WaiverViewDialog waiverId={viewingWaiverId} onClose={() => setViewingWaiverId(null)} />}
       {editOpen && <AddMemberDialog existing={member} onClose={() => setEditOpen(false)} onSaved={() => router.refresh()} />}
+      {creditsOpen && (
+        <SessionCreditsDialog
+          memberId={member.id}
+          memberName={member.name}
+          availableSlots={upcoming
+            .filter((u) => (PREBILL_TYPES as readonly string[]).includes(u.type) && !paidOccurrenceKeys.has(u.key))
+            .map((u) => ({ key: u.key, iso: u.iso, type: u.type }))}
+          onClose={() => setCreditsOpen(false)}
+          onChanged={refetchCredits}
+        />
+      )}
     </div>
   );
 }

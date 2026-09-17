@@ -68,6 +68,14 @@ export const POSIcon = (p: IconProps) =>
 export const ReportsIcon = (p: IconProps) =>
   base(p, <path d="M4 19V9M9.3 19V5M14.7 19v-7M20 19v-4" />);
 
+export const BillingIcon = (p: IconProps) =>
+  base(p, (
+    <>
+      <path d="M6 3h12v18l-3-2-3 2-3-2-3 2Z" />
+      <path d="M9 8h6M9 12h6M9 16h3" />
+    </>
+  ));
+
 export const SettingsIcon = (p: IconProps) =>
   base(p, (
     <>
