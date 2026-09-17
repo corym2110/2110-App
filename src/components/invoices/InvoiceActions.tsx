@@ -15,6 +15,51 @@ export function PrintButton() {
   );
 }
 
+/** Opens the staff member's own email client with the receipt pre-filled — a real, working "send
+    confirmation email" today, without needing Postmark (or any server-side email sending) set up.
+    Once Postmark is configured this can become an automatic send instead. */
+export function EmailConfirmationButton({
+  memberEmail,
+  memberName,
+  businessName,
+  invoiceNumber,
+  lines,
+  total,
+  sessionLines,
+}: {
+  memberEmail: string | null;
+  memberName: string;
+  businessName: string;
+  invoiceNumber: string;
+  lines: { description: string; amount: string }[];
+  total: string;
+  sessionLines: string[];
+}) {
+  if (!memberEmail) return null;
+
+  const bodyParts = [
+    `Hi ${memberName.split(" ")[0]},`,
+    "",
+    `Thanks for your purchase from ${businessName} (receipt #${invoiceNumber}):`,
+    "",
+    ...lines.map((l) => `  ${l.description} — ${l.amount}`),
+    "",
+    `Total: ${total}`,
+  ];
+  if (sessionLines.length > 0) {
+    bodyParts.push("", "This covers the following sessions:", ...sessionLines.map((s) => `  ${s}`));
+  }
+  bodyParts.push("", `— ${businessName}`);
+
+  const href = `mailto:${encodeURIComponent(memberEmail)}?subject=${encodeURIComponent(`Your receipt from ${businessName} (#${invoiceNumber})`)}&body=${encodeURIComponent(bodyParts.join("\n"))}`;
+
+  return (
+    <a href={href} className="print:hidden grid h-10 place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
+      Email confirmation
+    </a>
+  );
+}
+
 export function InvoiceNotes({ saleId, initialNotes, label = "What this bills for" }: { saleId: string; initialNotes: string | null; label?: string }) {
   const [editing, setEditing] = useState(false);
   const [notes, setNotes] = useState(initialNotes ?? "");

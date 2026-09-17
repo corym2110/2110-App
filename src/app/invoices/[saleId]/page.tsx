@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { getInvoice } from "@/server/sales";
 import { getBusinessSettings } from "@/server/settings";
-import { money, formatDateTime } from "@/lib/time";
-import { PrintButton, InvoiceNotes } from "@/components/invoices/InvoiceActions";
+import { getSessionCreditsForSale } from "@/server/billing";
+import { money, formatDateTime, formatDateShort, clock } from "@/lib/time";
+import { PrintButton, InvoiceNotes, EmailConfirmationButton } from "@/components/invoices/InvoiceActions";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ saleId
       </div>
     );
   }
+
+  const sessionCredits = await getSessionCreditsForSale(saleId);
 
   const invoiceNumber = invoice.id.slice(-8).toUpperCase();
   const lines = invoice.lineItems && invoice.lineItems.length > 0 ? invoice.lineItems : [{ description: invoice.summary, quantity: 1, unitPrice: invoice.total }];
@@ -61,7 +64,22 @@ export default async function InvoicePage({ params }: { params: Promise<{ saleId
           ) : (
             <span />
           )}
-          <PrintButton />
+          <div className="flex gap-2">
+            <EmailConfirmationButton
+              memberEmail={invoice.member?.email ?? null}
+              memberName={invoice.member?.name ?? "there"}
+              businessName={settings.businessName}
+              invoiceNumber={invoiceNumber}
+              lines={lines.map((li) => ({ description: li.description, amount: signedMoney(li.quantity * li.unitPrice) }))}
+              total={money(invoice.total)}
+              sessionLines={sessionCredits.map((c) =>
+                c.appliedIso
+                  ? `${c.sessionType} — ${formatDateShort(new Date(`${c.appliedIso}T00:00:00`))}${c.appliedStart != null ? ` ${clock(c.appliedStart)}` : ""}`
+                  : `${c.sessionType} — not yet scheduled`,
+              )}
+            />
+            <PrintButton />
+          </div>
         </div>
 
         <div className="px-1 print:px-0">
@@ -159,6 +177,27 @@ export default async function InvoicePage({ params }: { params: Promise<{ saleId
               </>
             )}
           </div>
+
+          {sessionCredits.length > 0 && (
+            <div className="mt-6 border-t border-divider pt-5 text-[13px]">
+              <div className="font-semibold">Sessions this pays for</div>
+              <div className="mt-1.5 flex flex-col gap-1">
+                {sessionCredits.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-3">
+                    <span>{c.sessionType}</span>
+                    {c.appliedIso ? (
+                      <span className="tabular-nums text-accent">
+                        {formatDateShort(new Date(`${c.appliedIso}T00:00:00`))}
+                        {c.appliedStart != null && ` ${clock(c.appliedStart)}`}
+                      </span>
+                    ) : (
+                      <span className="text-muted">Not yet scheduled — on file</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 border-t border-divider pt-5">
             <InvoiceNotes saleId={invoice.id} initialNotes={invoice.notes} label={invoice.paid ? "Receipt notes" : "What this bills for"} />

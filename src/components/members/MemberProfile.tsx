@@ -536,7 +536,7 @@ export function MemberProfile({
           memberName={member.name}
           availableSlots={upcoming
             .filter((u) => (PREBILL_TYPES as readonly string[]).includes(u.type) && !paidOccurrenceKeys.has(u.key))
-            .map((u) => ({ key: u.key, iso: u.iso, type: u.type }))}
+            .map((u) => ({ key: u.key, iso: u.iso, start: u.start, type: u.type }))}
           onClose={() => setCreditsOpen(false)}
           onChanged={refetchCredits}
         />

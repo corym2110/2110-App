@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { getSessionCreditsForMember, unapplyCredit, applyCreditToOccurrence, type SessionCreditRow } from "@/server/billing";
-import { formatDateShort, money } from "@/lib/time";
+import { formatDateShort, clock, money } from "@/lib/time";
 import { XIcon } from "@/components/ui/icons";
 
 export function SessionCreditsDialog({
@@ -15,7 +15,7 @@ export function SessionCreditsDialog({
 }: {
   memberId: string;
   memberName: string;
-  availableSlots: { key: string; iso: string; type: string }[];
+  availableSlots: { key: string; iso: string; start: number; type: string }[];
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -85,7 +85,10 @@ export function SessionCreditsDialog({
 
               <div className="mt-1 flex items-center justify-between gap-3">
                 {c.appliedIso ? (
-                  <span className="text-[13px] text-ok">Applied to {formatDateShort(new Date(`${c.appliedIso}T00:00:00`))}</span>
+                  <span className="text-[13px] text-ok">
+                    Applied to {formatDateShort(new Date(`${c.appliedIso}T00:00:00`))}
+                    {c.appliedStart != null && ` ${clock(c.appliedStart)}`}
+                  </span>
                 ) : (
                   <span className="text-[13px] text-bad">Unapplied — available</span>
                 )}
@@ -121,7 +124,9 @@ export function SessionCreditsDialog({
                         onClick={() => doApply(c.id, s.key)}
                         className="flex items-center justify-between rounded-md px-1.5 py-1 text-left text-[12.5px] hover:bg-row"
                       >
-                        <span>{formatDateShort(new Date(`${s.iso}T00:00:00`))}</span>
+                        <span>
+                          {formatDateShort(new Date(`${s.iso}T00:00:00`))} {clock(s.start)}
+                        </span>
                         <span className="text-muted">Choose</span>
                       </button>
                     ))}

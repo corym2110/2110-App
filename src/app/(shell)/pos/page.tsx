@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { HeaderButton } from "@/components/ui/HeaderButton";
 import { Select } from "@/components/ui/Select";
@@ -12,6 +12,8 @@ import { useMembers } from "@/lib/useMembers";
 import { useCoaches } from "@/lib/useCoaches";
 import { getSharedAccountLinks, type SharedAccountLink } from "@/server/members";
 import { createSale } from "@/server/sales";
+import { createSessionCreditsForSale } from "@/server/billing";
+import { PREBILL_TYPES, type PreBillType } from "@/lib/prebill";
 import { getBusinessSettings } from "@/server/settings";
 import { parseTaxRate } from "@/lib/tax";
 import { CATALOG, matchProduct } from "@/data/mock/catalog";
@@ -24,6 +26,7 @@ const CATEGORIES: Product["category"][] = ["Personal Training", "Remote Coaching
 const PAYMENT_METHODS = ["Card", "Cash", "E-transfer", "Package credit"];
 
 function POSInner() {
+  const router = useRouter();
   const params = useSearchParams();
   const initialMemberName = params.get("member") ? decodeURIComponent(params.get("member")!) : null;
   const preselect = useMemo(() => {
@@ -50,7 +53,6 @@ function POSInner() {
   const [discValue, setDiscValue] = useState("");
   const [method, setMethod] = useState("Card");
   const [invoiceUnpaid, setInvoiceUnpaid] = useState(false);
-  const [receipt, setReceipt] = useState<string | null>(null);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [taxRate, setTaxRate] = useState(0.05);
@@ -90,7 +92,6 @@ function POSInner() {
     <HeaderButton
       onClick={() => {
         setCart({});
-        setReceipt(null);
         setSaleError(null);
         setInvoiceUnpaid(false);
       }}
@@ -382,7 +383,7 @@ function POSInner() {
               if (discAmt > 0) lineItems.push({ description: "Discount", quantity: 1, unitPrice: -discAmt });
               startTransition(async () => {
                 try {
-                  await createSale({
+                  const saleId = await createSale({
                     memberId: member || undefined,
                     coachId: memberCoachId,
                     summary,
@@ -392,8 +393,14 @@ function POSInner() {
                     lineItems,
                     taxRate,
                   });
-                  setReceipt(invoiceUnpaid ? `${money(total)} added to ${memberName}'s account` : `${money(total)} charged to ${memberName}`);
+                  if (member) {
+                    const prebillItems = lines
+                      .filter((p) => p.sessionType && (PREBILL_TYPES as readonly string[]).includes(p.sessionType))
+                      .map((p) => ({ sessionType: p.sessionType as PreBillType, unitPrice: unitPrice(p), quantity: cart[p.id] }));
+                    if (prebillItems.length > 0) await createSessionCreditsForSale(saleId, member, prebillItems);
+                  }
                   setCart({});
+                  router.push(`/invoices/${saleId}`);
                 } catch {
                   setSaleError("Couldn't record that sale. Try again.");
                 }
@@ -403,13 +410,6 @@ function POSInner() {
           >
             {lines.length === 0 ? "Add items to charge" : isPending ? "Charging…" : invoiceUnpaid ? `Add ${money(total)} to account` : `Charge ${money(total)}`}
           </button>
-
-          {receipt && (
-            <div className="flex items-center gap-2.5 rounded-lg bg-row px-3.5 py-2.5 text-[13px]">
-              <span className="grid h-5 w-5 flex-none place-items-center rounded-full bg-ok text-surface">✓</span>
-              <span>{receipt}</span>
-            </div>
-          )}
         </aside>
       </div>
     </div>

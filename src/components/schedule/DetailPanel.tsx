@@ -8,6 +8,8 @@ import { capacityOf } from "@/data/mock/sessionTypes";
 import { clock, formatDateLong, initialsOf, slotKey } from "@/lib/time";
 import { XIcon, PencilIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
+import { PaidWithControl } from "@/components/schedule/PaidWithControl";
+import { PREBILL_TYPES } from "@/lib/prebill";
 import type { CoachRow } from "@/server/coaches";
 import type { AttendanceStatus, Member } from "@/types";
 
@@ -111,6 +113,9 @@ export function DetailPanel({
               ))}
             </div>
           </div>
+          {member && (PREBILL_TYPES as readonly string[]).includes(occurrence.type) && (
+            <PaidWithControl occurrenceKey={occurrence.key} memberId={member.id} sessionType={occurrence.type} />
+          )}
           {member && (
             <Link
               href={`/pos?member=${encodeURIComponent(member.name)}&type=${encodeURIComponent(occurrence.type)}&coach=${encodeURIComponent(coachDisplayName)}`}
