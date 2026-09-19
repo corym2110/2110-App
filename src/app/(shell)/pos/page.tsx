@@ -16,7 +16,7 @@ import { createSessionCreditsForSale } from "@/server/billing";
 import { PREBILL_TYPES, type PreBillType } from "@/lib/prebill";
 import { getBusinessSettings } from "@/server/settings";
 import { parseTaxRate } from "@/lib/tax";
-import { CATALOG, matchProduct } from "@/data/mock/catalog";
+import { CATALOG, matchProduct, coachForProduct } from "@/data/mock/catalog";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { useThemeStore } from "@/stores/theme";
 import { money } from "@/lib/time";
@@ -398,7 +398,12 @@ function POSInner() {
                   if (member) {
                     const prebillItems = lines
                       .filter((p) => p.sessionType && (PREBILL_TYPES as readonly string[]).includes(p.sessionType))
-                      .map((p) => ({ sessionType: p.sessionType as PreBillType, unitPrice: unitPrice(p), quantity: cart[p.id] }));
+                      .map((p) => ({
+                        sessionType: p.sessionType as PreBillType,
+                        unitPrice: unitPrice(p),
+                        quantity: cart[p.id],
+                        coachId: coachForProduct(p, coaches) ?? memberCoachId,
+                      }));
                     if (prebillItems.length > 0) await createSessionCreditsForSale(saleId, member, prebillItems);
                   }
                   setCart({});

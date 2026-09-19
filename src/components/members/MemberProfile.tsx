@@ -100,13 +100,13 @@ export function MemberProfile({
   const upcomingData = useScheduleRange(isoOf(tomorrow), upcomingToIso);
 
   const upcoming = useMemo(() => {
-    const rows: { iso: string; start: number; type: SessionTypeName; coach: string; key: string; sourceId: string }[] = [];
+    const rows: { iso: string; start: number; type: SessionTypeName; coach: string; coachId: string; key: string; sourceId: string }[] = [];
     for (let i = 0; i <= UPCOMING_WINDOW_DAYS; i++) {
       const date = addDays(tomorrow, i);
       const occs = occurrencesOn(upcomingData, isoOf(date));
       for (const o of occs) {
         if (o.name !== member.name && !(o.roster ?? []).includes(member.name)) continue;
-        rows.push({ iso: o.iso, start: o.start, type: o.type, coach: coaches.find((c) => c.id === o.coach)?.name ?? o.coach, key: o.key, sourceId: o.sourceId });
+        rows.push({ iso: o.iso, start: o.start, type: o.type, coach: coaches.find((c) => c.id === o.coach)?.name ?? o.coach, coachId: o.coach, key: o.key, sourceId: o.sourceId });
       }
     }
     return rows.sort((a, b) => (a.iso === b.iso ? a.start - b.start : a.iso < b.iso ? -1 : 1));
@@ -536,7 +536,7 @@ export function MemberProfile({
           memberName={member.name}
           availableSlots={upcoming
             .filter((u) => (PREBILL_TYPES as readonly string[]).includes(u.type) && !paidOccurrenceKeys.has(u.key))
-            .map((u) => ({ key: u.key, iso: u.iso, start: u.start, type: u.type }))}
+            .map((u) => ({ key: u.key, iso: u.iso, start: u.start, type: u.type, coachId: u.coachId }))}
           onClose={() => setCreditsOpen(false)}
           onChanged={refetchCredits}
         />

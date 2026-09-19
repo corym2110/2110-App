@@ -16,12 +16,14 @@ export function PaidWithControl({
   occurrenceKey,
   memberId,
   memberName,
+  coachId,
   coachName,
   sessionType,
 }: {
   occurrenceKey: string;
   memberId: string;
   memberName: string;
+  coachId: string;
   coachName: string;
   sessionType: string;
 }) {
@@ -29,9 +31,9 @@ export function PaidWithControl({
   const [isPending, startTransition] = useTransition();
 
   function refetch() {
-    getCreditInfoForOccurrence(occurrenceKey, memberId, sessionType).then(setInfo);
+    getCreditInfoForOccurrence(occurrenceKey, memberId, sessionType, coachId).then(setInfo);
   }
-  useEffect(refetch, [occurrenceKey, memberId, sessionType]);
+  useEffect(refetch, [occurrenceKey, memberId, sessionType, coachId]);
 
   if (info === null) return null;
 

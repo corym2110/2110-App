@@ -118,6 +118,7 @@ export function DetailPanel({
               occurrenceKey={occurrence.key}
               memberId={member.id}
               memberName={member.name}
+              coachId={occurrence.coach}
               coachName={coachDisplayName}
               sessionType={occurrence.type}
             />

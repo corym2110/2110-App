@@ -49,6 +49,16 @@ export function productById(id: string): Product | undefined {
   return CATALOG.find((p) => p.id === id);
 }
 
+/** Reverse of matchProduct: given a purchased Personal Training product (e.g. "Personal Training
+    – Chris"), find which coach's rate it represents. Coach-agnostic products (Group Training,
+    memberships, etc.) return undefined — there's no single coach to attribute those to by name. */
+export function coachForProduct(product: Product, coaches: { id: string; name: string }[]): string | undefined {
+  if (product.category !== "Personal Training" || !product.name.includes("–")) return undefined;
+  const first = product.name.split("–").pop()?.trim().toLowerCase();
+  if (!first) return undefined;
+  return coaches.find((c) => c.name.toLowerCase().startsWith(first))?.id;
+}
+
 /** Match a schedule session-type + coach to the POS product it should pre-select. */
 export function matchProduct(type: string, coachFullName?: string): Product | undefined {
   if (type === "Personal Training") {

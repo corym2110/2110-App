@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { getSessionCreditsForMember, unapplyCredit, applyCreditToOccurrence, type SessionCreditRow } from "@/server/billing";
+import { useCoaches } from "@/lib/useCoaches";
 import { formatDateShort, clock, money } from "@/lib/time";
 import { XIcon } from "@/components/ui/icons";
 
@@ -15,10 +16,11 @@ export function SessionCreditsDialog({
 }: {
   memberId: string;
   memberName: string;
-  availableSlots: { key: string; iso: string; start: number; type: string }[];
+  availableSlots: { key: string; iso: string; start: number; type: string; coachId: string }[];
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const coaches = useCoaches();
   const [credits, setCredits] = useState<SessionCreditRow[] | null>(null);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +78,10 @@ export function SessionCreditsDialog({
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <span className="text-[13.5px] font-medium">{c.sessionType}</span>
-                  <span className="ml-2 text-[12.5px] text-muted">{money(c.unitPrice)}</span>
+                  <span className="ml-2 text-[12.5px] text-muted">
+                    {money(c.unitPrice)}
+                    {c.coachId && ` · ${coaches.find((co) => co.id === c.coachId)?.name ?? "coach"}`}
+                  </span>
                 </div>
                 <Link href={`/invoices/${c.saleId}`} className="text-[12px] text-link hover:text-link-hover">
                   View invoice
@@ -111,11 +116,13 @@ export function SessionCreditsDialog({
 
               {applyingId === c.id && (
                 <div className="mt-2 flex flex-col gap-1 rounded-lg border border-divider p-2">
-                  {availableSlots.filter((s) => s.type === c.sessionType).length === 0 && (
-                    <div className="px-1.5 py-1 text-[12.5px] text-muted">No upcoming {c.sessionType} sessions to apply this to.</div>
+                  {availableSlots.filter((s) => s.type === c.sessionType && (!c.coachId || s.coachId === c.coachId)).length === 0 && (
+                    <div className="px-1.5 py-1 text-[12.5px] text-muted">
+                      No upcoming {c.sessionType} sessions {c.coachId ? "with this coach " : ""}to apply this to.
+                    </div>
                   )}
                   {availableSlots
-                    .filter((s) => s.type === c.sessionType)
+                    .filter((s) => s.type === c.sessionType && (!c.coachId || s.coachId === c.coachId))
                     .map((s) => (
                       <button
                         key={s.key}

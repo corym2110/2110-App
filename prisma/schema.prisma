@@ -25,6 +25,7 @@ model Coach {
   bookings    Booking[]
   series      RecurringSeries[]
   waiversWitnessed WaiverSignature[]
+  sessionCredits   SessionCredit[]
 }
 
 model TimeOff {
@@ -200,6 +201,13 @@ model SessionCredit {
   member               Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
   sessionType          String
   unitPrice            Decimal  @db.Decimal(10, 2)
+  /** Which coach's rate this credit was bought at (Cory Martin's $115 PT session vs. Chris
+      Campbell's $130 PT session are different products) — null only for the rare case of a
+      credit purchased with no matching occurrence to derive a coach from. Scopes the "Paid with"
+      switcher so a credit priced for one coach never gets manually applied to a different
+      coach's session. */
+  coachId              String?
+  coach                Coach?   @relation(fields: [coachId], references: [id])
   appliedOccurrenceKey String?
   appliedIso           String?
   createdAt            DateTime @default(now())

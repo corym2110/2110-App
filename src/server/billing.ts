@@ -109,7 +109,7 @@ export async function getBillableTally(periodFrom: string, periodTo: string, coa
 export async function createSessionCreditsForSale(
   saleId: string,
   memberId: string,
-  items: { sessionType: PreBillType; unitPrice: number; quantity: number }[],
+  items: { sessionType: PreBillType; unitPrice: number; quantity: number; coachId?: string }[],
 ): Promise<void> {
   const relevant = items.filter((i) => PREBILL_TYPES.includes(i.sessionType));
   if (relevant.length === 0) return;
@@ -125,32 +125,47 @@ export async function createSessionCreditsForSale(
   ]);
   const covered = new Set(existingCredits.map((c) => c.appliedOccurrenceKey));
 
-  const keysByType = new Map<PreBillType, string[]>();
+  const slotsByType = new Map<PreBillType, { key: string; coachId: string }[]>();
   for (const occs of Object.values(byIso)) {
     for (const occ of occs) {
       const type = occ.type as PreBillType;
       if (!PREBILL_TYPES.includes(type)) continue;
       const involved = occ.roster && occ.roster.length > 0 ? occ.roster.includes(name) : occ.name === name;
       if (!involved || covered.has(occ.key)) continue;
-      const list = keysByType.get(type) ?? [];
-      list.push(occ.key);
-      keysByType.set(type, list);
+      const list = slotsByType.get(type) ?? [];
+      list.push({ key: occ.key, coachId: occ.coach });
+      slotsByType.set(type, list);
     }
+  }
+
+  // Only ever auto-apply a credit to a session taught by the same coach it was priced for — a
+  // client trained by two different coaches doing the same session type (different rates) must
+  // never have one coach's credit silently cover the other's session. No matching-coach slot
+  // yet on the calendar means the credit is created unapplied, same as genuine overflow.
+  function takeSlot(type: PreBillType, coachId?: string): { key: string; coachId: string } | undefined {
+    const list = slotsByType.get(type);
+    if (!list || list.length === 0) return undefined;
+    if (!coachId) return list.shift();
+    const idx = list.findIndex((s) => s.coachId === coachId);
+    return idx === -1 ? undefined : list.splice(idx, 1)[0];
   }
 
   await db.$transaction(async (tx) => {
     for (const item of relevant) {
-      const available = keysByType.get(item.sessionType) ?? [];
       for (let i = 0; i < item.quantity; i++) {
-        const key = available.shift();
+        const slot = takeSlot(item.sessionType, item.coachId);
         await tx.sessionCredit.create({
           data: {
             saleId,
             memberId,
             sessionType: item.sessionType,
             unitPrice: item.unitPrice,
-            appliedOccurrenceKey: key ?? null,
-            appliedIso: key ? isoFromOccurrenceKey(key) : null,
+            // A credit is priced for a specific coach's rate, so it stays scoped to that coach —
+            // fall back to whichever coach the purchase was attributed to when there's no real
+            // upcoming occurrence yet to pin it to.
+            coachId: slot?.coachId ?? item.coachId ?? null,
+            appliedOccurrenceKey: slot?.key ?? null,
+            appliedIso: slot ? isoFromOccurrenceKey(slot.key) : null,
           },
         });
       }
@@ -166,6 +181,7 @@ export interface SessionCreditRow {
   saleId: string;
   sessionType: string;
   unitPrice: number;
+  coachId: string | null;
   appliedOccurrenceKey: string | null;
   appliedIso: string | null;
   /** Start time (minutes from midnight) of the occurrence this credit is applied to, resolved
@@ -196,6 +212,7 @@ export async function getSessionCreditsForSale(saleId: string): Promise<SessionC
       saleId: r.saleId,
       sessionType: r.sessionType,
       unitPrice: Number(r.unitPrice),
+      coachId: r.coachId,
       appliedOccurrenceKey: r.appliedOccurrenceKey,
       appliedIso: r.appliedIso,
       createdAt: r.createdAt.toISOString(),
@@ -213,6 +230,7 @@ export async function getSessionCreditsForMember(memberId: string): Promise<Sess
       saleId: r.saleId,
       sessionType: r.sessionType,
       unitPrice: Number(r.unitPrice),
+      coachId: r.coachId,
       appliedOccurrenceKey: r.appliedOccurrenceKey,
       appliedIso: r.appliedIso,
       createdAt: r.createdAt.toISOString(),
@@ -258,11 +276,22 @@ export interface OccurrenceCreditInfo {
 
 /** What a specific member's specific scheduled occurrence is paid with, plus every unapplied
     credit of the matching type they could switch it to — the data behind the "Paid with" control
-    on the Schedule/Classes detail panel. */
-export async function getCreditInfoForOccurrence(occurrenceKey: string, memberId: string, sessionType: string): Promise<OccurrenceCreditInfo> {
+    on the Schedule/Classes detail panel. `teachingCoachId` scopes the switch-to options to
+    credits bought at *this* coach's rate (or credits with no coach on file at all, the rare
+    overflow case) — a credit priced for a different coach's session never shows up here, so it
+    can't get silently applied at the wrong rate. */
+export async function getCreditInfoForOccurrence(
+  occurrenceKey: string,
+  memberId: string,
+  sessionType: string,
+  teachingCoachId: string,
+): Promise<OccurrenceCreditInfo> {
   const [applied, available] = await Promise.all([
     db.sessionCredit.findFirst({ where: { appliedOccurrenceKey: occurrenceKey, memberId } }),
-    db.sessionCredit.findMany({ where: { memberId, sessionType, appliedOccurrenceKey: null }, orderBy: { createdAt: "asc" } }),
+    db.sessionCredit.findMany({
+      where: { memberId, sessionType, appliedOccurrenceKey: null, OR: [{ coachId: teachingCoachId }, { coachId: null }] },
+      orderBy: { createdAt: "asc" },
+    }),
   ]);
   return {
     applied: applied ? { id: applied.id, unitPrice: Number(applied.unitPrice), createdAt: applied.createdAt.toISOString() } : null,
