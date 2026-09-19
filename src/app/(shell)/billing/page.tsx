@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { useCurrentCoach } from "@/lib/useCoaches";
 import { getBillableTally, type BillableMemberRow } from "@/server/billing";
-import { money } from "@/lib/time";
+import { money, formatDateShort, clock } from "@/lib/time";
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -102,19 +102,34 @@ export default function BillingPage() {
               <span className="block text-[12px] text-muted">{r.coachName}</span>
             </Link>
             <div className="flex flex-col gap-1.5">
-              {r.items.map((i) => (
-                <div key={i.sessionType} className="flex items-center justify-between gap-2 text-[12.5px]">
-                  <span className="text-muted">
-                    {i.occurrenceKeys.length}&times; {i.sessionType} @ {money(i.unitPrice)}
-                  </span>
-                  <Link
-                    href={`/pos?member=${encodeURIComponent(r.name)}&type=${encodeURIComponent(i.sessionType)}&coach=${encodeURIComponent(r.coachName)}&qty=${i.occurrenceKeys.length}`}
-                    className="flex-none text-link hover:text-link-hover"
-                  >
-                    Bill via POS →
-                  </Link>
-                </div>
-              ))}
+              {r.items.map((i) => {
+                const sameTime = i.occurrenceDates.every((d) => d.start === i.occurrenceDates[0]?.start);
+                return (
+                  <div key={i.sessionType}>
+                    <div className="flex items-center justify-between gap-2 text-[12.5px]">
+                      <span className="text-muted">
+                        {i.occurrenceKeys.length}&times; {i.sessionType} @ {money(i.unitPrice)}
+                      </span>
+                      <Link
+                        href={`/pos?member=${encodeURIComponent(r.name)}&type=${encodeURIComponent(i.sessionType)}&coach=${encodeURIComponent(r.coachName)}&qty=${i.occurrenceKeys.length}`}
+                        className="flex-none text-link hover:text-link-hover"
+                      >
+                        Bill via POS →
+                      </Link>
+                    </div>
+                    <div className="mt-0.5 text-[11.5px] text-pretty text-muted">
+                      {i.occurrenceDates.map((d, idx) => (
+                        <span key={idx}>
+                          {formatDateShort(new Date(`${d.iso}T00:00:00`))}
+                          {!sameTime && ` ${clock(d.start)}`}
+                          {idx < i.occurrenceDates.length - 1 ? ", " : ""}
+                        </span>
+                      ))}
+                      {sameTime && i.occurrenceDates[0] && <span> · {clock(i.occurrenceDates[0].start)}</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             <span className="text-right font-medium tabular-nums">{money(r.subtotal)}</span>
           </div>

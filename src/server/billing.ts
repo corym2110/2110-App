@@ -20,6 +20,9 @@ function isoFromOccurrenceKey(key: string): string {
 export interface BillableItem {
   sessionType: PreBillType;
   occurrenceKeys: string[];
+  /** iso + start (minutes from midnight) for each entry in occurrenceKeys, same order — lets the
+      tally list the actual upcoming dates, not just a count. */
+  occurrenceDates: { iso: string; start: number }[];
   unitPrice: number;
 }
 
@@ -50,7 +53,7 @@ export async function getBillableTally(periodFrom: string, periodTo: string): Pr
 
   const byMember = new Map<string, BillableMemberRow>();
 
-  function addUnit(name: string, type: PreBillType, key: string) {
+  function addUnit(name: string, type: PreBillType, key: string, iso: string, start: number) {
     const member = byName.get(name);
     if (!member) return;
     if (covered.has(`${key}::${member.id}`)) return;
@@ -61,10 +64,11 @@ export async function getBillableTally(periodFrom: string, periodTo: string): Pr
     }
     let item = row.items.find((i) => i.sessionType === type);
     if (!item) {
-      item = { sessionType: type, occurrenceKeys: [], unitPrice: sessionTypeByName(type).price };
+      item = { sessionType: type, occurrenceKeys: [], occurrenceDates: [], unitPrice: sessionTypeByName(type).price };
       row.items.push(item);
     }
     item.occurrenceKeys.push(key);
+    item.occurrenceDates.push({ iso, start });
   }
 
   for (const occs of Object.values(byIso)) {
@@ -72,9 +76,9 @@ export async function getBillableTally(periodFrom: string, periodTo: string): Pr
       if (!PREBILL_TYPES.includes(occ.type as PreBillType)) continue;
       const type = occ.type as PreBillType;
       if (occ.roster && occ.roster.length > 0) {
-        for (const name of occ.roster) addUnit(name, type, occ.key);
+        for (const name of occ.roster) addUnit(name, type, occ.key, occ.iso, occ.start);
       } else {
-        addUnit(occ.name, type, occ.key);
+        addUnit(occ.name, type, occ.key, occ.iso, occ.start);
       }
     }
   }
