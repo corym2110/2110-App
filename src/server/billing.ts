@@ -27,6 +27,16 @@ export interface BillableItem {
   unitPrice: number;
 }
 
+/** Another coach's own tally block for a client also flagged on the primary coach's row — full
+    item breakdown (not just a name), so "Bill via POS" can pull both coaches' sessions into one
+    combined checkout when one coach handles billing on behalf of both (e.g. a shared class, or a
+    studio where one person just does all the billing). */
+export interface OtherCoachBlock {
+  coachId: string;
+  coachName: string;
+  items: BillableItem[];
+}
+
 export interface BillableMemberRow {
   memberId: string;
   name: string;
@@ -34,6 +44,11 @@ export interface BillableMemberRow {
   coachName: string;
   items: BillableItem[];
   subtotal: number;
+  /** Other coaches (besides the one this tally is scoped to) who also have a Personal Training /
+      Group Training session with this client in the same period — the "*" flag so a client split
+      across coaches doesn't get billed by one coach without the other coach's half ever coming
+      to light. Empty when the tally isn't scoped to a single coach. */
+  otherCoaches: OtherCoachBlock[];
 }
 
 /** Tallies every not-yet-covered Personal Training / Group Training session in [periodFrom,
@@ -41,10 +56,14 @@ export interface BillableMemberRow {
     member) pair a SessionCredit already points to, so re-running this for the same period never
     double-counts a session that was already billed (even across separate runs, or after a
     reschedule) — scoped per member, not just per occurrence, since one Group Training slot can
-    have several attendees each paying with their own credit against the same occurrence key. */
+    have several attendees each paying with their own credit against the same occurrence key.
+
+    Always reads every coach's occurrences for the period (not just `coachId`'s) so it can flag
+    clients who are also trained by someone else this period, even though the tally rows
+    themselves stay scoped to `coachId`. */
 export async function getBillableTally(periodFrom: string, periodTo: string, coachId?: string): Promise<BillableMemberRow[]> {
   const [byIso, members, coaches, existingCredits] = await Promise.all([
-    getOccurrencesForRange(periodFrom, periodTo, coachId),
+    getOccurrencesForRange(periodFrom, periodTo),
     db.member.findMany({ include: { coach: true } }),
     db.coach.findMany({ select: { id: true, name: true } }),
     db.sessionCredit.findMany({ where: { appliedIso: { gte: periodFrom, lte: periodTo } }, select: { appliedOccurrenceKey: true, memberId: true } }),
@@ -55,6 +74,8 @@ export async function getBillableTally(periodFrom: string, periodTo: string, coa
   const coachNameById = new Map(coaches.map((c) => [c.id, c.name]));
 
   const byMember = new Map<string, BillableMemberRow>();
+  // memberId -> otherCoachId -> that coach's items for this member (mirrors `items` on the row).
+  const otherItemsByMemberThenCoach = new Map<string, Map<string, BillableItem[]>>();
 
   /** Real price for this session — the same catalog product POS would actually charge (e.g.
       "Personal Training – Cory" at $115, not the generic $50 session-type default), resolved by
@@ -63,19 +84,11 @@ export async function getBillableTally(periodFrom: string, periodTo: string, coa
     return matchProduct(type, coachNameById.get(teachingCoachId))?.price ?? sessionTypeByName(type).price;
   }
 
-  function addUnit(name: string, type: PreBillType, key: string, iso: string, start: number, teachingCoachId: string) {
-    const member = byName.get(name);
-    if (!member) return;
-    if (covered.has(`${key}::${member.id}`)) return;
-    let row = byMember.get(member.id);
-    if (!row) {
-      row = { memberId: member.id, name, coachId: member.coachId, coachName: member.coach?.name ?? "Unassigned", items: [], subtotal: 0 };
-      byMember.set(member.id, row);
-    }
-    let item = row.items.find((i) => i.sessionType === type);
+  function pushInto(items: BillableItem[], type: PreBillType, key: string, iso: string, start: number, teachingCoachId: string) {
+    let item = items.find((i) => i.sessionType === type);
     if (!item) {
       item = { sessionType: type, occurrenceKeys: [], occurrenceDates: [], unitPrice: priceFor(type, teachingCoachId) };
-      row.items.push(item);
+      items.push(item);
     }
     item.occurrenceKeys.push(key);
     item.occurrenceDates.push({ iso, start });
@@ -85,16 +98,48 @@ export async function getBillableTally(periodFrom: string, periodTo: string, coa
     for (const occ of occs) {
       if (!PREBILL_TYPES.includes(occ.type as PreBillType)) continue;
       const type = occ.type as PreBillType;
-      if (occ.roster && occ.roster.length > 0) {
-        for (const name of occ.roster) addUnit(name, type, occ.key, occ.iso, occ.start, occ.coach);
-      } else {
-        addUnit(occ.name, type, occ.key, occ.iso, occ.start, occ.coach);
+      const names = occ.roster && occ.roster.length > 0 ? occ.roster : [occ.name];
+
+      for (const name of names) {
+        const member = byName.get(name);
+        if (!member) continue;
+        if (covered.has(`${occ.key}::${member.id}`)) continue;
+
+        if (coachId && occ.coach !== coachId) {
+          let byCoach = otherItemsByMemberThenCoach.get(member.id);
+          if (!byCoach) {
+            byCoach = new Map();
+            otherItemsByMemberThenCoach.set(member.id, byCoach);
+          }
+          let items = byCoach.get(occ.coach);
+          if (!items) {
+            items = [];
+            byCoach.set(occ.coach, items);
+          }
+          pushInto(items, type, occ.key, occ.iso, occ.start, occ.coach);
+          continue;
+        }
+
+        let row = byMember.get(member.id);
+        if (!row) {
+          row = { memberId: member.id, name, coachId: member.coachId, coachName: member.coach?.name ?? "Unassigned", items: [], subtotal: 0, otherCoaches: [] };
+          byMember.set(member.id, row);
+        }
+        pushInto(row.items, type, occ.key, occ.iso, occ.start, occ.coach);
       }
     }
   }
 
   for (const row of byMember.values()) {
     row.subtotal = row.items.reduce((a, i) => a + i.occurrenceKeys.length * i.unitPrice, 0);
+    const byCoach = otherItemsByMemberThenCoach.get(row.memberId);
+    if (byCoach) {
+      row.otherCoaches = [...byCoach.entries()].map(([otherCoachId, items]) => ({
+        coachId: otherCoachId,
+        coachName: coachNameById.get(otherCoachId) ?? "another coach",
+        items,
+      }));
+    }
   }
 
   return [...byMember.values()].sort((a, b) => a.name.localeCompare(b.name));

@@ -204,7 +204,11 @@ export async function addSeries(input: NewSeriesInput): Promise<string> {
 }
 
 /** Cancels one occurrence: deletes it outright if it's a one-off booking, otherwise excludes
-    just that single date from its recurring series (the rest of the series is untouched). */
+    just that single date from its recurring series (the rest of the series is untouched). Any
+    session credit that was covering this occurrence gets freed back to "unapplied" rather than
+    left pointing at a slot that no longer exists — if the cancellation earns a makeup session
+    (per policy), staff apply the now-free credit to it from the Session credits dialog; if not,
+    it's still available to apply anywhere else. */
 export async function cancelOccurrence(sourceId: string, key: string): Promise<void> {
   const iso = key.slice(key.lastIndexOf("@") + 1);
   const booking = await db.booking.findUnique({ where: { id: sourceId } });
@@ -216,11 +220,15 @@ export async function cancelOccurrence(sourceId: string, key: string): Promise<v
       await db.recurringSeries.update({ where: { id: sourceId }, data: { excludedDates: [...series.excludedDates, iso] } });
     }
   }
+  await db.sessionCredit.updateMany({ where: { appliedOccurrenceKey: key }, data: { appliedOccurrenceKey: null, appliedIso: null } });
   afterSchedule();
 }
 
 /** Moves/edits one occurrence to a new date/time/coach. A one-off booking is updated in place;
-    a recurring occurrence is excluded on its origin date and recreated as a one-off booking. */
+    a recurring occurrence is excluded on its origin date and recreated as a one-off booking.
+    Either way, any session credit that was covering the original occurrence follows it to the
+    new one — the common shape of an early-cancel-with-rollover is a drag-to-reschedule, and the
+    money already collected for that slot should keep paying for it at its new time. */
 export async function moveOccurrence(
   occ: { sourceId: string; key: string; type: SessionTypeName; duration: number; capacity: number; name: string; roster?: string[] },
   targetIso: string,
@@ -228,18 +236,20 @@ export async function moveOccurrence(
   targetCoachId?: string,
 ): Promise<void> {
   const booking = await db.booking.findUnique({ where: { id: occ.sourceId } });
+  let newKey = occ.key;
   if (booking) {
     await db.booking.update({
       where: { id: occ.sourceId },
       data: { iso: targetIso, start: targetStart, ...(targetCoachId ? { coachId: targetCoachId } : {}) },
     });
+    newKey = originKey(occ.sourceId, targetIso);
   } else {
     const series = await db.recurringSeries.findUnique({ where: { id: occ.sourceId } });
     const originIso = occ.key.slice(occ.key.lastIndexOf("@") + 1);
     if (series && !series.excludedDates.includes(originIso)) {
       await db.recurringSeries.update({ where: { id: occ.sourceId }, data: { excludedDates: [...series.excludedDates, originIso] } });
     }
-    await db.booking.create({
+    const newBooking = await db.booking.create({
       data: {
         iso: targetIso,
         start: targetStart,
@@ -251,6 +261,10 @@ export async function moveOccurrence(
         roster: occ.roster ?? [],
       },
     });
+    newKey = originKey(newBooking.id, targetIso);
+  }
+  if (newKey !== occ.key) {
+    await db.sessionCredit.updateMany({ where: { appliedOccurrenceKey: occ.key }, data: { appliedOccurrenceKey: newKey, appliedIso: targetIso } });
   }
   afterSchedule();
 }

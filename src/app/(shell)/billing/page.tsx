@@ -5,11 +5,19 @@ import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import { useCoaches, useCurrentCoach } from "@/lib/useCoaches";
-import { getBillableTally, type BillableMemberRow } from "@/server/billing";
+import { getBillableTally, type BillableMemberRow, type BillableItem } from "@/server/billing";
 import { money, formatDateShort, clock } from "@/lib/time";
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
+}
+
+/** Builds a POS link that seeds the cart with one or more products at once — one `item` param
+    per (coach, session type), so billing on behalf of multiple coaches in a single checkout
+    pre-loads all of it instead of just one coach's share. */
+function posHref(memberName: string, blocks: { coachName: string; items: BillableItem[] }[]): string {
+  const itemParams = blocks.flatMap((b) => b.items.map((i) => `item=${encodeURIComponent(`${i.sessionType}|${b.coachName}|${i.occurrenceKeys.length}`)}`));
+  return `/pos?member=${encodeURIComponent(memberName)}&${itemParams.join("&")}`;
 }
 
 /** This month's two pre-bill halves, plus which one is "current" — they bill at the start of a
@@ -125,9 +133,24 @@ export default function BillingPage() {
 
             {rows?.map((r) => (
               <div key={r.memberId} className="grid grid-cols-[1.4fr_1.6fr_100px] items-center gap-3 border-b border-divider px-[22px] py-3 text-[13.5px] last:border-b-0">
-                <Link href={`/members/${r.memberId}`} className="min-w-0 truncate hover:text-link">
-                  {r.name}
-                </Link>
+                <div className="min-w-0">
+                  <Link href={`/members/${r.memberId}`} className="min-w-0 truncate hover:text-link">
+                    {r.name}
+                    {r.otherCoaches.length > 0 && (
+                      <span className="ml-1 text-accent" title={`Also trains with ${r.otherCoaches.map((oc) => oc.coachName).join(", ")} this period`}>
+                        *
+                      </span>
+                    )}
+                  </Link>
+                  {r.otherCoaches.length > 0 && (
+                    <Link
+                      href={posHref(r.name, [{ coachName: viewingCoachName ?? "", items: r.items }, ...r.otherCoaches])}
+                      className="block text-[11.5px] text-link hover:text-link-hover"
+                    >
+                      Bill both via POS →
+                    </Link>
+                  )}
+                </div>
                 <div className="flex flex-col gap-1.5">
                   {r.items.map((i) => {
                     const sameTime = i.occurrenceDates.every((d) => d.start === i.occurrenceDates[0]?.start);
@@ -138,7 +161,7 @@ export default function BillingPage() {
                             {i.occurrenceKeys.length}&times; {i.sessionType} @ {money(i.unitPrice)}
                           </span>
                           <Link
-                            href={`/pos?member=${encodeURIComponent(r.name)}&type=${encodeURIComponent(i.sessionType)}&coach=${encodeURIComponent(viewingCoachName ?? "")}&qty=${i.occurrenceKeys.length}`}
+                            href={posHref(r.name, [{ coachName: viewingCoachName ?? "", items: [i] }])}
                             className="flex-none text-link hover:text-link-hover"
                           >
                             Bill via POS →
@@ -162,6 +185,13 @@ export default function BillingPage() {
               </div>
             ))}
           </Card>
+
+          {rows?.some((r) => r.otherCoaches.length > 0) && (
+            <div className="text-[12px] text-muted">
+              <span className="text-accent">*</span> also has Personal Training / Group Training sessions with another coach this period — hover the name for
+              who, or use &quot;Bill both via POS&quot; to charge everything in one checkout (each session still credits the coach who actually teaches it).
+            </div>
+          )}
         </>
       )}
     </div>

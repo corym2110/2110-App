@@ -29,11 +29,28 @@ function POSInner() {
   const router = useRouter();
   const params = useSearchParams();
   const initialMemberName = params.get("member") ? decodeURIComponent(params.get("member")!) : null;
-  const preselect = useMemo(() => {
+  /** Seeds the cart from the URL — either one product via `type`/`coach`/`qty` (the single-session
+      "Go to store" / "Bill this client" links), or several at once via repeated `item=type|coach|qty`
+      params (a combined "Bill via POS" from the Upcoming cycle tally, when one coach bills on
+      behalf of more than one coach's sessions in the same checkout). */
+  const initialCart = useMemo(() => {
+    const cart: Record<string, number> = {};
+    const itemParams = params.getAll("item");
+    if (itemParams.length > 0) {
+      for (const raw of itemParams) {
+        const [type, coach, qtyStr] = decodeURIComponent(raw).split("|");
+        const product = matchProduct(type, coach || undefined);
+        if (!product) continue;
+        cart[product.id] = (cart[product.id] ?? 0) + Math.max(1, Number(qtyStr) || 1);
+      }
+      return cart;
+    }
     const type = params.get("type");
-    if (!type) return null;
+    if (!type) return cart;
     const coach = params.get("coach") ? decodeURIComponent(params.get("coach")!) : undefined;
-    return matchProduct(decodeURIComponent(type), coach);
+    const product = matchProduct(decodeURIComponent(type), coach);
+    if (product) cart[product.id] = Math.max(1, Number(params.get("qty")) || 1);
+    return cart;
   }, [params]);
 
   const members = useMembers();
@@ -42,9 +59,7 @@ function POSInner() {
 
   const [category, setCategory] = useState<Product["category"]>("Personal Training");
   const [query, setQuery] = useState("");
-  const [cart, setCart] = useState<Record<string, number>>(
-    preselect ? { [preselect.id]: Math.max(1, Number(params.get("qty")) || 1) } : {},
-  );
+  const [cart, setCart] = useState<Record<string, number>>(initialCart);
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
   /** Selected member's id, or "" for Walk-in. null = not yet chosen, fall back to the ?member= query param once members load. */
