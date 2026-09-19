@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getOccurrencesForRange } from "./schedule";
 import { sessionTypeByName } from "@/data/mock/sessionTypes";
+import { matchProduct } from "@/data/mock/catalog";
 import { PREBILL_TYPES, type PreBillType } from "@/lib/prebill";
 import { addDays, isoOf } from "@/lib/time";
 
@@ -42,18 +43,27 @@ export interface BillableMemberRow {
     reschedule) — scoped per member, not just per occurrence, since one Group Training slot can
     have several attendees each paying with their own credit against the same occurrence key. */
 export async function getBillableTally(periodFrom: string, periodTo: string, coachId?: string): Promise<BillableMemberRow[]> {
-  const [byIso, members, existingCredits] = await Promise.all([
+  const [byIso, members, coaches, existingCredits] = await Promise.all([
     getOccurrencesForRange(periodFrom, periodTo, coachId),
     db.member.findMany({ include: { coach: true } }),
+    db.coach.findMany({ select: { id: true, name: true } }),
     db.sessionCredit.findMany({ where: { appliedIso: { gte: periodFrom, lte: periodTo } }, select: { appliedOccurrenceKey: true, memberId: true } }),
   ]);
 
   const covered = new Set(existingCredits.filter((c) => c.appliedOccurrenceKey).map((c) => `${c.appliedOccurrenceKey}::${c.memberId}`));
   const byName = new Map(members.map((m) => [fullName(m), m]));
+  const coachNameById = new Map(coaches.map((c) => [c.id, c.name]));
 
   const byMember = new Map<string, BillableMemberRow>();
 
-  function addUnit(name: string, type: PreBillType, key: string, iso: string, start: number) {
+  /** Real price for this session — the same catalog product POS would actually charge (e.g.
+      "Personal Training – Cory" at $115, not the generic $50 session-type default), resolved by
+      the coach who actually teaches the occurrence. */
+  function priceFor(type: PreBillType, teachingCoachId: string): number {
+    return matchProduct(type, coachNameById.get(teachingCoachId))?.price ?? sessionTypeByName(type).price;
+  }
+
+  function addUnit(name: string, type: PreBillType, key: string, iso: string, start: number, teachingCoachId: string) {
     const member = byName.get(name);
     if (!member) return;
     if (covered.has(`${key}::${member.id}`)) return;
@@ -64,7 +74,7 @@ export async function getBillableTally(periodFrom: string, periodTo: string, coa
     }
     let item = row.items.find((i) => i.sessionType === type);
     if (!item) {
-      item = { sessionType: type, occurrenceKeys: [], occurrenceDates: [], unitPrice: sessionTypeByName(type).price };
+      item = { sessionType: type, occurrenceKeys: [], occurrenceDates: [], unitPrice: priceFor(type, teachingCoachId) };
       row.items.push(item);
     }
     item.occurrenceKeys.push(key);
@@ -76,9 +86,9 @@ export async function getBillableTally(periodFrom: string, periodTo: string, coa
       if (!PREBILL_TYPES.includes(occ.type as PreBillType)) continue;
       const type = occ.type as PreBillType;
       if (occ.roster && occ.roster.length > 0) {
-        for (const name of occ.roster) addUnit(name, type, occ.key, occ.iso, occ.start);
+        for (const name of occ.roster) addUnit(name, type, occ.key, occ.iso, occ.start, occ.coach);
       } else {
-        addUnit(occ.name, type, occ.key, occ.iso, occ.start);
+        addUnit(occ.name, type, occ.key, occ.iso, occ.start, occ.coach);
       }
     }
   }
