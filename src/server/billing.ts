@@ -41,9 +41,9 @@ export interface BillableMemberRow {
     double-counts a session that was already billed (even across separate runs, or after a
     reschedule) — scoped per member, not just per occurrence, since one Group Training slot can
     have several attendees each paying with their own credit against the same occurrence key. */
-export async function getBillableTally(periodFrom: string, periodTo: string): Promise<BillableMemberRow[]> {
+export async function getBillableTally(periodFrom: string, periodTo: string, coachId?: string): Promise<BillableMemberRow[]> {
   const [byIso, members, existingCredits] = await Promise.all([
-    getOccurrencesForRange(periodFrom, periodTo),
+    getOccurrencesForRange(periodFrom, periodTo, coachId),
     db.member.findMany({ include: { coach: true } }),
     db.sessionCredit.findMany({ where: { appliedIso: { gte: periodFrom, lte: periodTo } }, select: { appliedOccurrenceKey: true, memberId: true } }),
   ]);

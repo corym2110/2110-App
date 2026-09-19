@@ -66,7 +66,7 @@ export function Sidebar() {
       <div className="flex-1" />
 
       <div className="flex flex-col gap-0.5 border-t border-white/12 pt-3">
-        {coach?.isAdmin && (
+        {coach && (
           <Link
             href="/billing"
             className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm overflow-hidden ${
@@ -74,7 +74,7 @@ export function Sidebar() {
             } ${pathname === "/billing" ? "bg-accent text-on-accent font-semibold" : "text-white/66 hover:bg-white/8 hover:text-white"}`}
           >
             <BillingIcon size={17} className="flex-none" />
-            {!collapsed && <span className="whitespace-nowrap">Bill sessions</span>}
+            {!collapsed && <span className="whitespace-nowrap">Upcoming cycle</span>}
           </Link>
         )}
         {coach?.isAdmin && (
