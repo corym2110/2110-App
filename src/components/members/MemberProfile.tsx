@@ -21,6 +21,8 @@ import { getWaiverSignaturesForMember, type WaiverSummaryRow } from "@/server/wa
 import { SessionCreditsDialog } from "@/components/members/SessionCreditsDialog";
 import { getSessionCreditsForMember, type SessionCreditRow } from "@/server/billing";
 import { PREBILL_TYPES } from "@/lib/prebill";
+import { CardOnFileDialog } from "@/components/members/CardOnFileDialog";
+import { getCardOnFile, type CloverCard } from "@/server/clover";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { addDays, formatDateShort, initialsOf, isoOf, money, slotKey, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
@@ -54,6 +56,8 @@ export function MemberProfile({
   const [waivers, setWaivers] = useState<WaiverSummaryRow[]>([]);
   const [credits, setCredits] = useState<SessionCreditRow[]>([]);
   const [creditsOpen, setCreditsOpen] = useState(false);
+  const [cardOnFile, setCardOnFile] = useState<CloverCard | null | undefined>(undefined);
+  const [cardDialogOpen, setCardDialogOpen] = useState(false);
 
   const coaches = useCoaches();
 
@@ -65,6 +69,11 @@ export function MemberProfile({
     getWaiverSignaturesForMember(member.id).then(setWaivers);
   }
   useEffect(refetchWaivers, [member.id]);
+
+  function refetchCardOnFile() {
+    getCardOnFile(member.id).then(setCardOnFile);
+  }
+  useEffect(refetchCardOnFile, [member.id]);
 
   function refetchCredits() {
     getSessionCreditsForMember(member.id).then(setCredits);
@@ -353,6 +362,22 @@ export function MemberProfile({
               </button>
             ))}
           </div>
+
+          <div className="mt-3.5 flex items-center justify-between border-t border-divider pt-3">
+            <div>
+              <div className="mb-1 text-[11.5px] tracking-wider text-muted uppercase">Card on file</div>
+              {cardOnFile === undefined && <div className="text-[13px] text-muted">Checking…</div>}
+              {cardOnFile === null && <div className="text-[13px] text-bad">Not on file</div>}
+              {cardOnFile && (
+                <div className="text-[13px]">
+                  {cardOnFile.brand} ····{cardOnFile.last4} <span className="text-muted">exp {cardOnFile.expMonth}/{cardOnFile.expYear}</span>
+                </div>
+              )}
+            </div>
+            <button type="button" onClick={() => setCardDialogOpen(true)} className="text-[12.5px] text-link hover:text-link-hover">
+              {cardOnFile ? "Replace" : "Save a card"}
+            </button>
+          </div>
         </Card>
 
         <Card className="px-[22px] py-5">
@@ -540,6 +565,9 @@ export function MemberProfile({
           onClose={() => setCreditsOpen(false)}
           onChanged={refetchCredits}
         />
+      )}
+      {cardDialogOpen && (
+        <CardOnFileDialog memberId={member.id} memberName={member.name} onClose={() => setCardDialogOpen(false)} onSaved={refetchCardOnFile} />
       )}
     </div>
   );

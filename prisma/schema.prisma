@@ -120,6 +120,9 @@ model Member {
   dateOfBirth           DateTime?
   emergencyContactName  String?
   emergencyContactPhone String?
+  /** Clover Customer id — the member's saved card on file. Never stores an actual card number;
+      the real card lives in Clover's vault, we just keep the reference needed to charge it later. */
+  cloverCustomerId      String?
   plan          String          @default("No plan yet")
   since         String
   coachId       String?
