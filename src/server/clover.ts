@@ -34,11 +34,35 @@ export interface CloverCard {
   expYear: string;
 }
 
+/** Best-effort extraction across the couple of response shapes Clover's create/update customer
+    call has been observed to return a card under. Ecommerce's `/v1/customers` has no GET/read
+    verb at all (confirmed: it 405s) — reading a card back later requires the separate v3 REST
+    API and a different credential we don't have, so the summary shown on our side is captured
+    once, here, at save time, and cached locally rather than re-fetched from Clover. */
+function extractCard(data: unknown): CloverCard | null {
+  const d = data as Record<string, unknown> | null;
+  if (!d) return null;
+  const cardsField = d.cards as { elements?: unknown[] } | unknown[] | undefined;
+  const cardsList = Array.isArray(cardsField) ? cardsField : cardsField?.elements;
+  const card = (d.defaultCard ?? d.card ?? cardsList?.[0] ?? d) as Record<string, unknown> | undefined;
+  if (!card) return null;
+  const last4 = card.last4 ?? card.lastFour;
+  const brand = card.cardType ?? card.brand ?? card.first6;
+  if (!last4 && !brand) return null;
+  const expiry = String(card.expirationDate ?? "");
+  return {
+    brand: String(brand ?? "Card"),
+    last4: String(last4 ?? "0000"),
+    expMonth: expiry.slice(0, 2) || String(card.expMonth ?? ""),
+    expYear: expiry.slice(2) || String(card.expYear ?? ""),
+  };
+}
+
 /** Saves a tokenized card (from the hosted iframe's clover.createToken()) as this member's
     card on file. Creates a Clover Customer the first time, or attaches the new token to the
     existing one on a re-save (e.g. an expired card gets replaced). Never touches a raw card
     number — `cardToken` is the `clv_...` token the browser got back from Clover directly. */
-export async function saveCardForMember(memberId: string, cardToken: string): Promise<CloverCard> {
+export async function saveCardForMember(memberId: string, cardToken: string): Promise<CloverCard | null> {
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
 
   const res = member.cloverCustomerId
@@ -61,34 +85,32 @@ export async function saveCardForMember(memberId: string, cardToken: string): Pr
     throw new Error(`Clover rejected the card (${res.status}): ${body}`);
   }
   const data = await res.json();
+  const card = extractCard(data);
 
-  if (!member.cloverCustomerId) {
-    await db.member.update({ where: { id: memberId }, data: { cloverCustomerId: data.id } });
-  }
+  await db.member.update({
+    where: { id: memberId },
+    data: {
+      cloverCustomerId: (data as { id?: string }).id ?? member.cloverCustomerId,
+      cloverCardBrand: card?.brand,
+      cloverCardLast4: card?.last4,
+      cloverCardExpiry: card ? `${card.expMonth}/${card.expYear}` : null,
+    },
+  });
 
-  const card = data.defaultCard ?? data.cards?.[0];
-  return {
-    brand: card?.cardType ?? card?.brand ?? "Card",
-    last4: card?.last4 ?? "0000",
-    expMonth: String(card?.expirationDate?.slice(0, 2) ?? card?.first6 ?? ""),
-    expYear: String(card?.expirationDate?.slice(2) ?? ""),
-  };
+  return card;
 }
 
+/** Reads the cached card summary — never calls Clover, since there's no supported way to read a
+    saved card back from the Ecommerce API with the credential this integration uses. */
 export async function getCardOnFile(memberId: string): Promise<CloverCard | null> {
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
-  if (!member.cloverCustomerId) return null;
-
-  const res = await sclFetch(`/v1/customers/${member.cloverCustomerId}`, { method: "GET" });
-  if (!res.ok) return null;
-  const data = await res.json();
-  const card = data.defaultCard ?? data.cards?.[0];
-  if (!card) return null;
+  if (!member.cloverCustomerId || !member.cloverCardLast4) return null;
+  const [expMonth, expYear] = (member.cloverCardExpiry ?? "").split("/");
   return {
-    brand: card.cardType ?? card.brand ?? "Card",
-    last4: card.last4 ?? "0000",
-    expMonth: String(card.expirationDate?.slice(0, 2) ?? ""),
-    expYear: String(card.expirationDate?.slice(2) ?? ""),
+    brand: member.cloverCardBrand ?? "Card",
+    last4: member.cloverCardLast4,
+    expMonth: expMonth ?? "",
+    expYear: expYear ?? "",
   };
 }
 

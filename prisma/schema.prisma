@@ -121,8 +121,13 @@ model Member {
   emergencyContactName  String?
   emergencyContactPhone String?
   /** Clover Customer id — the member's saved card on file. Never stores an actual card number;
-      the real card lives in Clover's vault, we just keep the reference needed to charge it later. */
+      the real card lives in Clover's vault, we just keep the reference needed to charge it later.
+      Brand/last4/expiry below are display-only, captured from the save response itself rather
+      than re-queried from Clover later (that needs a different REST API and credential entirely). */
   cloverCustomerId      String?
+  cloverCardBrand       String?
+  cloverCardLast4       String?
+  cloverCardExpiry      String?
   plan          String          @default("No plan yet")
   since         String
   coachId       String?
