@@ -58,46 +58,58 @@ function extractCard(data: unknown): CloverCard | null {
   };
 }
 
+export interface SaveCardResult {
+  ok: boolean;
+  card?: CloverCard | null;
+  error?: string;
+}
+
 /** Saves a tokenized card (from the hosted iframe's clover.createToken()) as this member's
     card on file. Creates a Clover Customer the first time, or attaches the new token to the
     existing one on a re-save (e.g. an expired card gets replaced). Never touches a raw card
-    number — `cardToken` is the `clv_...` token the browser got back from Clover directly. */
-export async function saveCardForMember(memberId: string, cardToken: string): Promise<CloverCard | null> {
+    number — `cardToken` is the `clv_...` token the browser got back from Clover directly.
+    Returns a result object rather than throwing — Next.js redacts a Server Action's thrown
+    error message in production, which would hide the real Clover failure reason. */
+export async function saveCardForMember(memberId: string, cardToken: string): Promise<SaveCardResult> {
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
 
-  const res = member.cloverCustomerId
-    ? await sclFetch(`/v1/customers/${member.cloverCustomerId}`, {
-        method: "PUT",
-        body: JSON.stringify({ source: cardToken }),
-      })
-    : await sclFetch(`/v1/customers`, {
-        method: "POST",
-        body: JSON.stringify({
-          email: member.email,
-          firstName: member.firstName,
-          lastName: member.lastName,
-          source: cardToken,
-        }),
-      });
+  try {
+    const res = member.cloverCustomerId
+      ? await sclFetch(`/v1/customers/${member.cloverCustomerId}`, {
+          method: "PUT",
+          body: JSON.stringify({ source: cardToken }),
+        })
+      : await sclFetch(`/v1/customers`, {
+          method: "POST",
+          body: JSON.stringify({
+            email: member.email,
+            firstName: member.firstName,
+            lastName: member.lastName,
+            source: cardToken,
+          }),
+        });
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Clover rejected the card (${res.status}): ${body}`);
+    if (!res.ok) {
+      const body = await res.text();
+      return { ok: false, error: `Clover rejected the card (${res.status}): ${body}` };
+    }
+    const data = await res.json();
+    const card = extractCard(data);
+
+    await db.member.update({
+      where: { id: memberId },
+      data: {
+        cloverCustomerId: (data as { id?: string }).id ?? member.cloverCustomerId,
+        cloverCardBrand: card?.brand,
+        cloverCardLast4: card?.last4,
+        cloverCardExpiry: card ? `${card.expMonth}/${card.expYear}` : null,
+      },
+    });
+
+    return { ok: true, card };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Unknown error saving the card." };
   }
-  const data = await res.json();
-  const card = extractCard(data);
-
-  await db.member.update({
-    where: { id: memberId },
-    data: {
-      cloverCustomerId: (data as { id?: string }).id ?? member.cloverCustomerId,
-      cloverCardBrand: card?.brand,
-      cloverCardLast4: card?.last4,
-      cloverCardExpiry: card ? `${card.expMonth}/${card.expYear}` : null,
-    },
-  });
-
-  return card;
 }
 
 /** Reads the cached card summary — never calls Clover, since there's no supported way to read a

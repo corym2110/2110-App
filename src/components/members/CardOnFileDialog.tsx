@@ -92,14 +92,14 @@ export function CardOnFileDialog({ memberId, memberName, onClose, onSaved }: { m
           setSubmitting(false);
           return;
         }
-        try {
-          await saveCardForMember(memberId, result.token);
-          onSaved();
-          onClose();
-        } catch (e) {
-          setError(e instanceof Error ? e.message : "Clover rejected that card. Double-check the number and try again.");
+        const saveResult = await saveCardForMember(memberId, result.token);
+        if (!saveResult.ok) {
+          setError(saveResult.error ?? "Clover rejected that card. Double-check the number and try again.");
           setSubmitting(false);
+          return;
         }
+        onSaved();
+        onClose();
       })
       .catch(() => {
         setError("Couldn't reach Clover. Try again.");
