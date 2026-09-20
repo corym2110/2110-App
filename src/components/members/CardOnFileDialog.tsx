@@ -96,8 +96,8 @@ export function CardOnFileDialog({ memberId, memberName, onClose, onSaved }: { m
           await saveCardForMember(memberId, result.token);
           onSaved();
           onClose();
-        } catch {
-          setError("Clover rejected that card. Double-check the number and try again.");
+        } catch (e) {
+          setError(e instanceof Error ? e.message : "Clover rejected that card. Double-check the number and try again.");
           setSubmitting(false);
         }
       })
