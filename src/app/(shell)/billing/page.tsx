@@ -136,19 +136,20 @@ export default function BillingPage() {
                 <div className="min-w-0">
                   <Link href={`/members/${r.memberId}`} className="min-w-0 truncate hover:text-link">
                     {r.name}
-                    {r.otherCoaches.length > 0 && (
-                      <span className="ml-1 text-accent" title={`Also trains with ${r.otherCoaches.map((oc) => oc.coachName).join(", ")} this period`}>
-                        *
-                      </span>
-                    )}
+                    {r.otherCoaches.length > 0 && <span className="ml-1 text-accent">*</span>}
                   </Link>
                   {r.otherCoaches.length > 0 && (
-                    <Link
-                      href={posHref(r.name, [{ coachName: viewingCoachName ?? "", items: r.items }, ...r.otherCoaches])}
-                      className="block text-[11.5px] text-link hover:text-link-hover"
-                    >
-                      Bill both via POS →
-                    </Link>
+                    <>
+                      <div className="text-[11.5px] text-pretty text-muted">
+                        * also with {r.otherCoaches.map((oc) => oc.coachName).join(", ")} this period
+                      </div>
+                      <Link
+                        href={posHref(r.name, [{ coachName: viewingCoachName ?? "", items: r.items }, ...r.otherCoaches])}
+                        className="block text-[11.5px] text-link hover:text-link-hover"
+                      >
+                        Bill both via POS →
+                      </Link>
+                    </>
                   )}
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -188,8 +189,8 @@ export default function BillingPage() {
 
           {rows?.some((r) => r.otherCoaches.length > 0) && (
             <div className="text-[12px] text-muted">
-              <span className="text-accent">*</span> also has Personal Training / Group Training sessions with another coach this period — hover the name for
-              who, or use &quot;Bill both via POS&quot; to charge everything in one checkout (each session still credits the coach who actually teaches it).
+              <span className="text-accent">*</span> also has Personal Training / Group Training sessions with another coach this period — use &quot;Bill
+              both via POS&quot; to charge everything in one checkout (each session still credits the coach who actually teaches it).
             </div>
           )}
         </>
