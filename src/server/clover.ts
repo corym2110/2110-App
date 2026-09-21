@@ -35,35 +35,30 @@ export interface CloverCard {
   expYear: string;
 }
 
-/** Best-effort extraction across the couple of response shapes Clover's create/update customer
-    call has been observed to return a card under. Ecommerce's `/v1/customers` has no GET/read
-    verb at all (confirmed: it 405s) — reading a card back later requires the separate v3 REST
-    API and a different credential we don't have, so the summary shown on our side is captured
-    once, here, at save time, and cached locally rather than re-fetched from Clover. */
-function extractCard(data: unknown): CloverCard | null {
-  const d = data as Record<string, unknown> | null;
-  if (!d) return null;
-  const cardsField = d.cards as { elements?: unknown[] } | unknown[] | undefined;
-  const cardsList = Array.isArray(cardsField) ? cardsField : cardsField?.elements;
-  const card = (d.defaultCard ?? d.card ?? cardsList?.[0] ?? d) as Record<string, unknown> | undefined;
-  if (!card) return null;
-  const last4 = card.last4 ?? card.lastFour;
-  const brand = card.cardType ?? card.brand ?? card.first6;
-  if (!last4 && !brand) return null;
-  const expiry = String(card.expirationDate ?? "");
-  return {
-    id: String(card.id ?? ""),
-    brand: String(brand ?? "Card"),
-    last4: String(last4 ?? "0000"),
-    expMonth: expiry.slice(0, 2) || String(card.expMonth ?? ""),
-    expYear: expiry.slice(2) || String(card.expYear ?? ""),
-  };
+/** The customer create/update response never includes card brand/last4/expiry — confirmed via a
+    real sandbox response, it only lists the new source's opaque id under `sources.data[0]`:
+    `{"id":"...","sources":{"object":"list","data":["21D333NRCF0J0"]}}`. That id is what a future
+    replace needs to revoke the old card; the display fields have to come from somewhere else. */
+function extractCardId(data: unknown): string | null {
+  const d = data as { sources?: { data?: unknown[] } } | null;
+  const id = d?.sources?.data?.[0];
+  return typeof id === "string" ? id : null;
 }
 
 export interface SaveCardResult {
   ok: boolean;
   card?: CloverCard | null;
   error?: string;
+}
+
+/** The card summary as reported by Clover.js's `createToken()` on the client — the browser has
+    this from the raw card entry, before it's ever tokenized, so it's the one place brand/last4/
+    expiry are actually available (Clover's server-side customer API never returns them). */
+export interface TokenizedCardSummary {
+  brand: string;
+  last4: string;
+  expMonth: string;
+  expYear: string;
 }
 
 /** Clover allows only one card on file per customer — replacing it 409s ("Customer already has
@@ -78,8 +73,10 @@ async function revokeCard(customerId: string, cardId: string): Promise<void> {
     since Clover rejects a second card on the same customer otherwise. Never touches a raw card
     number — `cardToken` is the `clv_...` token the browser got back from Clover directly.
     Returns a result object rather than throwing — Next.js redacts a Server Action's thrown
-    error message in production, which would hide the real Clover failure reason. */
-export async function saveCardForMember(memberId: string, cardToken: string): Promise<SaveCardResult> {
+    error message in production, which would hide the real Clover failure reason. `cardSummary`
+    is what gets displayed — captured client-side, since Clover's own response has no card
+    details in it (see extractCardId above). */
+export async function saveCardForMember(memberId: string, cardToken: string, cardSummary: TokenizedCardSummary): Promise<SaveCardResult> {
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
 
   try {
@@ -108,17 +105,17 @@ export async function saveCardForMember(memberId: string, cardToken: string): Pr
       return { ok: false, error: `Clover rejected the card (${res.status}): ${errorBody}` };
     }
     const data = await res.json();
-    console.log("[clover] customer save response:", JSON.stringify(data));
-    const card = extractCard(data);
+    const cardId = extractCardId(data);
+    const card: CloverCard = { id: cardId ?? "", ...cardSummary };
 
     await db.member.update({
       where: { id: memberId },
       data: {
         cloverCustomerId: (data as { id?: string }).id ?? member.cloverCustomerId,
-        cloverCardId: card?.id || null,
-        cloverCardBrand: card?.brand,
-        cloverCardLast4: card?.last4,
-        cloverCardExpiry: card ? `${card.expMonth}/${card.expYear}` : null,
+        cloverCardId: cardId,
+        cloverCardBrand: card.brand,
+        cloverCardLast4: card.last4,
+        cloverCardExpiry: `${card.expMonth}/${card.expYear}`,
       },
     });
 

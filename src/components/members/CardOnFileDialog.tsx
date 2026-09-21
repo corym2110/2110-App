@@ -16,7 +16,11 @@ interface CloverElements {
 }
 interface CloverSdk {
   elements: () => CloverElements;
-  createToken: () => Promise<{ token?: string; errors?: Record<string, { error?: string }> }>;
+  createToken: () => Promise<{
+    token?: string;
+    card?: { brand?: string; last4?: string; exp_month?: string; exp_year?: string };
+    errors?: Record<string, { error?: string }>;
+  }>;
 }
 declare global {
   interface Window {
@@ -92,7 +96,12 @@ export function CardOnFileDialog({ memberId, memberName, onClose, onSaved }: { m
           setSubmitting(false);
           return;
         }
-        const saveResult = await saveCardForMember(memberId, result.token);
+        const saveResult = await saveCardForMember(memberId, result.token, {
+          brand: result.card?.brand ?? "Card",
+          last4: result.card?.last4 ?? "0000",
+          expMonth: result.card?.exp_month ?? "",
+          expYear: result.card?.exp_year ?? "",
+        });
         if (!saveResult.ok) {
           setError(saveResult.error ?? "Clover rejected that card. Double-check the number and try again.");
           setSubmitting(false);
