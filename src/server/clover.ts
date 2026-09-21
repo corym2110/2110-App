@@ -90,17 +90,16 @@ export async function saveCardForMember(memberId: string, cardToken: string): Pr
       source: cardToken,
     };
 
+    // The card token is single-use, so there's exactly one Clover call below, chosen up front —
+    // a failed attempt can't be retried with a second request using the same token. When we know
+    // which card is on the customer, revoke it first, then attach the new one to that customer.
+    // Otherwise (no customer yet, or a legacy customer saved before we cached the card id, so
+    // there's nothing to revoke) just create a fresh customer rather than risk a 409.
+    let res: Response;
     if (member.cloverCustomerId && member.cloverCardId) {
       await revokeCard(member.cloverCustomerId, member.cloverCardId);
-    }
-
-    let res = member.cloverCustomerId
-      ? await sclFetch(`/v1/customers/${member.cloverCustomerId}`, { method: "PUT", body: JSON.stringify(body) })
-      : await sclFetch(`/v1/customers`, { method: "POST", body: JSON.stringify(body) });
-
-    // A customer saved before we cached the card id (or where revoke otherwise didn't take) will
-    // still 409 here — fall back to a fresh customer rather than getting stuck unable to replace it.
-    if (!res.ok && res.status === 409 && member.cloverCustomerId) {
+      res = await sclFetch(`/v1/customers/${member.cloverCustomerId}`, { method: "PUT", body: JSON.stringify(body) });
+    } else {
       res = await sclFetch(`/v1/customers`, { method: "POST", body: JSON.stringify(body) });
     }
 
