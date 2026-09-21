@@ -125,6 +125,9 @@ model Member {
       Brand/last4/expiry below are display-only, captured from the save response itself rather
       than re-queried from Clover later (that needs a different REST API and credential entirely). */
   cloverCustomerId      String?
+  /** The card's own id within that Clover customer (its "source" id) — Clover only allows one
+      card on file per customer, so replacing it requires revoking this specific card first. */
+  cloverCardId          String?
   cloverCardBrand       String?
   cloverCardLast4       String?
   cloverCardExpiry      String?

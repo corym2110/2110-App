@@ -16,7 +16,7 @@ function privateToken(): string {
   return token;
 }
 
-async function sclFetch(path: string, init: RequestInit & { body?: string }): Promise<Response> {
+async function sclFetch(path: string, init: RequestInit): Promise<Response> {
   return fetch(`${HOSTS.scl}${path}`, {
     ...init,
     headers: {
@@ -28,6 +28,7 @@ async function sclFetch(path: string, init: RequestInit & { body?: string }): Pr
 }
 
 export interface CloverCard {
+  id: string;
   brand: string;
   last4: string;
   expMonth: string;
@@ -51,6 +52,7 @@ function extractCard(data: unknown): CloverCard | null {
   if (!last4 && !brand) return null;
   const expiry = String(card.expirationDate ?? "");
   return {
+    id: String(card.id ?? ""),
     brand: String(brand ?? "Card"),
     last4: String(last4 ?? "0000"),
     expMonth: expiry.slice(0, 2) || String(card.expMonth ?? ""),
@@ -64,9 +66,16 @@ export interface SaveCardResult {
   error?: string;
 }
 
+/** Clover allows only one card on file per customer — replacing it 409s ("Customer already has
+    Card on File or ACH on File") unless the old one is revoked first. */
+async function revokeCard(customerId: string, cardId: string): Promise<void> {
+  await sclFetch(`/v1/customers/${customerId}/sources/${cardId}`, { method: "DELETE" }).catch(() => {});
+}
+
 /** Saves a tokenized card (from the hosted iframe's clover.createToken()) as this member's
     card on file. Creates a Clover Customer the first time, or attaches the new token to the
-    existing one on a re-save (e.g. an expired card gets replaced). Never touches a raw card
+    existing one on a re-save (e.g. an expired card gets replaced) — revoking the old card first,
+    since Clover rejects a second card on the same customer otherwise. Never touches a raw card
     number — `cardToken` is the `clv_...` token the browser got back from Clover directly.
     Returns a result object rather than throwing — Next.js redacts a Server Action's thrown
     error message in production, which would hide the real Clover failure reason. */
@@ -80,13 +89,24 @@ export async function saveCardForMember(memberId: string, cardToken: string): Pr
       lastName: member.lastName,
       source: cardToken,
     };
-    const res = member.cloverCustomerId
+
+    if (member.cloverCustomerId && member.cloverCardId) {
+      await revokeCard(member.cloverCustomerId, member.cloverCardId);
+    }
+
+    let res = member.cloverCustomerId
       ? await sclFetch(`/v1/customers/${member.cloverCustomerId}`, { method: "PUT", body: JSON.stringify(body) })
       : await sclFetch(`/v1/customers`, { method: "POST", body: JSON.stringify(body) });
 
+    // A customer saved before we cached the card id (or where revoke otherwise didn't take) will
+    // still 409 here — fall back to a fresh customer rather than getting stuck unable to replace it.
+    if (!res.ok && res.status === 409 && member.cloverCustomerId) {
+      res = await sclFetch(`/v1/customers`, { method: "POST", body: JSON.stringify(body) });
+    }
+
     if (!res.ok) {
-      const body = await res.text();
-      return { ok: false, error: `Clover rejected the card (${res.status}): ${body}` };
+      const errorBody = await res.text();
+      return { ok: false, error: `Clover rejected the card (${res.status}): ${errorBody}` };
     }
     const data = await res.json();
     const card = extractCard(data);
@@ -95,6 +115,7 @@ export async function saveCardForMember(memberId: string, cardToken: string): Pr
       where: { id: memberId },
       data: {
         cloverCustomerId: (data as { id?: string }).id ?? member.cloverCustomerId,
+        cloverCardId: card?.id || null,
         cloverCardBrand: card?.brand,
         cloverCardLast4: card?.last4,
         cloverCardExpiry: card ? `${card.expMonth}/${card.expYear}` : null,
@@ -114,6 +135,7 @@ export async function getCardOnFile(memberId: string): Promise<CloverCard | null
   if (!member.cloverCustomerId || !member.cloverCardLast4) return null;
   const [expMonth, expYear] = (member.cloverCardExpiry ?? "").split("/");
   return {
+    id: member.cloverCardId ?? "",
     brand: member.cloverCardBrand ?? "Card",
     last4: member.cloverCardLast4,
     expMonth: expMonth ?? "",
