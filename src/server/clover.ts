@@ -108,6 +108,7 @@ export async function saveCardForMember(memberId: string, cardToken: string): Pr
       return { ok: false, error: `Clover rejected the card (${res.status}): ${errorBody}` };
     }
     const data = await res.json();
+    console.log("[clover] customer save response:", JSON.stringify(data));
     const card = extractCard(data);
 
     await db.member.update({
