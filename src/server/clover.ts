@@ -148,14 +148,22 @@ export interface ChargeResult {
 
 /** Charges a member's saved card on file with the client not present (a period pre-bill, a POS
     "charge card on file" line) — `initiator: "MERCHANT"` is what tells Clover this is a
-    merchant-initiated off-session charge against stored credentials, not a fresh card entry. */
-export async function chargeCardOnFile(memberId: string, amountCents: number, currency = "CAD"): Promise<ChargeResult> {
+    merchant-initiated off-session charge against stored credentials, not a fresh card entry.
+    `idempotencyKey` defaults to a fresh one per call (fine for a one-off POS charge); a caller
+    that might retry the same logical charge — like a cron job Vercel could re-invoke — should
+    pass a stable key (e.g. `${memberId}:${billingDate}`) so a retry can't double-charge. */
+export async function chargeCardOnFile(
+  memberId: string,
+  amountCents: number,
+  currency = "CAD",
+  idempotencyKey: string = randomUUID(),
+): Promise<ChargeResult> {
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
   if (!member.cloverCustomerId) return { ok: false, error: "No card on file for this member." };
 
   const res = await sclFetch(`/v1/charges`, {
     method: "POST",
-    headers: { "idempotency-key": randomUUID() },
+    headers: { "idempotency-key": idempotencyKey },
     body: JSON.stringify({
       amount: amountCents,
       currency,

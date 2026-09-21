@@ -131,6 +131,18 @@ model Member {
   cloverCardBrand       String?
   cloverCardLast4       String?
   cloverCardExpiry      String?
+  /** Recurring membership billing — a member has at most one active plan, charged
+      automatically against the card on file by the charge-memberships cron job.
+      `status` "failed" means 3 consecutive charge attempts failed and the job has stopped
+      auto-retrying; staff re-activates it once the card's fixed. */
+  membershipName        String?
+  membershipPrice       Decimal?        @db.Decimal(10, 2)
+  membershipStatus      String          @default("none")
+  nextBillDate          String?
+  billFailCount         Int             @default(0)
+  lastBillAt            DateTime?
+  lastBillStatus        String?
+  lastBillError         String?
   plan          String          @default("No plan yet")
   since         String
   coachId       String?

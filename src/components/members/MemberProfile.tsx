@@ -10,7 +10,16 @@ import { useThemeStore } from "@/stores/theme";
 import { useCoaches } from "@/lib/useCoaches";
 import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
 import { cancelOccurrence } from "@/server/schedule";
-import { addSharedAccount, removeSharedAccount, type SharedAccountLink } from "@/server/members";
+import {
+  addSharedAccount,
+  removeSharedAccount,
+  getMembershipInfo,
+  pauseMembership,
+  resumeMembership,
+  type SharedAccountLink,
+  type MembershipInfo,
+} from "@/server/members";
+import { MembershipDialog } from "@/components/members/MembershipDialog";
 import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
 import { CreateInvoiceDialog } from "@/components/members/CreateInvoiceDialog";
 import { PurchaseHistoryDialog } from "@/components/members/PurchaseHistoryDialog";
@@ -58,6 +67,8 @@ export function MemberProfile({
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [cardOnFile, setCardOnFile] = useState<CloverCard | null | undefined>(undefined);
   const [cardDialogOpen, setCardDialogOpen] = useState(false);
+  const [membership, setMembership] = useState<MembershipInfo | null | undefined>(undefined);
+  const [membershipDialogOpen, setMembershipDialogOpen] = useState(false);
 
   const coaches = useCoaches();
 
@@ -74,6 +85,11 @@ export function MemberProfile({
     getCardOnFile(member.id).then(setCardOnFile);
   }
   useEffect(refetchCardOnFile, [member.id]);
+
+  function refetchMembership() {
+    getMembershipInfo(member.id).then(setMembership);
+  }
+  useEffect(refetchMembership, [member.id]);
 
   function refetchCredits() {
     getSessionCreditsForMember(member.id).then(setCredits);
@@ -378,6 +394,39 @@ export function MemberProfile({
               {cardOnFile ? "Replace" : "Save a card"}
             </button>
           </div>
+
+          <div className="mt-3.5 flex items-center justify-between border-t border-divider pt-3">
+            <div>
+              <div className="mb-1 text-[11.5px] tracking-wider text-muted uppercase">Membership billing</div>
+              {!membership && <div className="text-[13px] text-muted">Not set up</div>}
+              {membership && (
+                <div className="text-[13px]">
+                  {membership.name} · {money(membership.price)}/mo
+                  <span className={membership.status === "failed" ? "ml-1.5 text-bad" : "ml-1.5 text-muted"}>
+                    · {membership.status === "failed" ? "Failed — needs attention" : membership.status === "paused" ? "Paused" : `Next charge ${membership.nextBillDate}`}
+                  </span>
+                  {membership.lastBillError && membership.status === "failed" && (
+                    <div className="mt-0.5 text-[12px] text-bad">{membership.lastBillError}</div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-none items-center gap-3">
+              {membership && membership.status !== "paused" && (
+                <button type="button" onClick={() => startTransition(async () => { await pauseMembership(member.id); refetchMembership(); })} className="text-[12.5px] text-muted hover:text-fg">
+                  Pause
+                </button>
+              )}
+              {membership && membership.status === "paused" && (
+                <button type="button" onClick={() => startTransition(async () => { await resumeMembership(member.id); refetchMembership(); })} className="text-[12.5px] text-link hover:text-link-hover">
+                  Resume
+                </button>
+              )}
+              <button type="button" onClick={() => setMembershipDialogOpen(true)} className="text-[12.5px] text-link hover:text-link-hover">
+                {membership ? "Edit" : "Set up"}
+              </button>
+            </div>
+          </div>
         </Card>
 
         <Card className="px-[22px] py-5">
@@ -568,6 +617,16 @@ export function MemberProfile({
       )}
       {cardDialogOpen && (
         <CardOnFileDialog memberId={member.id} memberName={member.name} onClose={() => setCardDialogOpen(false)} onSaved={refetchCardOnFile} />
+      )}
+      {membershipDialogOpen && (
+        <MembershipDialog
+          memberId={member.id}
+          memberName={member.name}
+          existing={membership}
+          hasCardOnFile={!!cardOnFile}
+          onClose={() => setMembershipDialogOpen(false)}
+          onSaved={refetchMembership}
+        />
       )}
     </div>
   );

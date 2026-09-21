@@ -186,6 +186,77 @@ export async function updateMemberDetails(memberId: string, input: MemberDetails
 }
 
 
+export interface MembershipInfo {
+  name: string;
+  price: number;
+  status: string;
+  nextBillDate: string | null;
+  lastBillAt: string | null;
+  lastBillStatus: string | null;
+  lastBillError: string | null;
+}
+
+export async function getMembershipInfo(memberId: string): Promise<MembershipInfo | null> {
+  const member = await db.member.findUniqueOrThrow({
+    where: { id: memberId },
+    select: {
+      membershipName: true,
+      membershipPrice: true,
+      membershipStatus: true,
+      nextBillDate: true,
+      lastBillAt: true,
+      lastBillStatus: true,
+      lastBillError: true,
+    },
+  });
+  if (member.membershipStatus === "none" || !member.membershipName || !member.membershipPrice) return null;
+  return {
+    name: member.membershipName,
+    price: Number(member.membershipPrice),
+    status: member.membershipStatus,
+    nextBillDate: member.nextBillDate,
+    lastBillAt: member.lastBillAt?.toISOString() ?? null,
+    lastBillStatus: member.lastBillStatus,
+    lastBillError: member.lastBillError,
+  };
+}
+
+/** Sets up (or edits) a member's recurring membership — activates billing starting on
+    `nextBillDate`. Resets the failure counter/status so editing a plan after a "failed" state
+    (e.g. staff fixed the card) puts it straight back to actively retrying. */
+export async function setMembership(memberId: string, input: { name: string; price: number; nextBillDate: string }): Promise<void> {
+  const name = input.name.trim();
+  if (!name) throw new Error("Membership name is required.");
+  if (!(input.price > 0)) throw new Error("Membership price must be greater than 0.");
+  if (!input.nextBillDate) throw new Error("Next bill date is required.");
+
+  await db.member.update({
+    where: { id: memberId },
+    data: {
+      membershipName: name,
+      membershipPrice: input.price,
+      membershipStatus: "active",
+      nextBillDate: input.nextBillDate,
+      billFailCount: 0,
+      lastBillError: null,
+    },
+  });
+  revalidatePath(`/members/${memberId}`);
+}
+
+export async function pauseMembership(memberId: string): Promise<void> {
+  await db.member.update({ where: { id: memberId }, data: { membershipStatus: "paused" } });
+  revalidatePath(`/members/${memberId}`);
+}
+
+export async function resumeMembership(memberId: string): Promise<void> {
+  await db.member.update({
+    where: { id: memberId },
+    data: { membershipStatus: "active", billFailCount: 0, lastBillError: null },
+  });
+  revalidatePath(`/members/${memberId}`);
+}
+
 export interface SharedAccountLink {
   id: string;
   name: string;
