@@ -74,20 +74,15 @@ export async function saveCardForMember(memberId: string, cardToken: string): Pr
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
 
   try {
+    const body = {
+      email: member.email,
+      firstName: member.firstName,
+      lastName: member.lastName,
+      source: cardToken,
+    };
     const res = member.cloverCustomerId
-      ? await sclFetch(`/v1/customers/${member.cloverCustomerId}`, {
-          method: "PUT",
-          body: JSON.stringify({ source: cardToken }),
-        })
-      : await sclFetch(`/v1/customers`, {
-          method: "POST",
-          body: JSON.stringify({
-            email: member.email,
-            firstName: member.firstName,
-            lastName: member.lastName,
-            source: cardToken,
-          }),
-        });
+      ? await sclFetch(`/v1/customers/${member.cloverCustomerId}`, { method: "PUT", body: JSON.stringify(body) })
+      : await sclFetch(`/v1/customers`, { method: "POST", body: JSON.stringify(body) });
 
     if (!res.ok) {
       const body = await res.text();
