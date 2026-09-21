@@ -76,6 +76,15 @@ export const BillingIcon = (p: IconProps) =>
     </>
   ));
 
+export const PayrollIcon = (p: IconProps) =>
+  base(p, (
+    <>
+      <rect x="3" y="6" width="18" height="13" rx="2.5" />
+      <path d="M3 10.5h18" />
+      <circle cx="12" cy="14.5" r="2.1" />
+    </>
+  ));
+
 export const SettingsIcon = (p: IconProps) =>
   base(p, (
     <>

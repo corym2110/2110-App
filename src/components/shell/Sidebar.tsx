@@ -13,6 +13,7 @@ import {
   POSIcon,
   ReportsIcon,
   BillingIcon,
+  PayrollIcon,
   SettingsIcon,
 } from "@/components/ui/icons";
 
@@ -75,6 +76,17 @@ export function Sidebar() {
           >
             <BillingIcon size={17} className="flex-none" />
             {!collapsed && <span className="whitespace-nowrap">Upcoming cycle</span>}
+          </Link>
+        )}
+        {coach?.isAdmin && (
+          <Link
+            href="/payroll"
+            className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm overflow-hidden ${
+              collapsed ? "justify-center" : ""
+            } ${pathname === "/payroll" ? "bg-accent text-on-accent font-semibold" : "text-white/66 hover:bg-white/8 hover:text-white"}`}
+          >
+            <PayrollIcon size={17} className="flex-none" />
+            {!collapsed && <span className="whitespace-nowrap">Payroll</span>}
           </Link>
         )}
         {coach?.isAdmin && (

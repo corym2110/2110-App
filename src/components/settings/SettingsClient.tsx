@@ -8,6 +8,7 @@ import { PlusIcon, XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useCoachesWithRefetch } from "@/lib/useCoaches";
+import { updateCoachCommissionRate } from "@/server/coaches";
 import { AddCoachDialog } from "@/components/settings/AddCoachDialog";
 import { AddSessionTypeDialog } from "@/components/settings/AddSessionTypeDialog";
 import { initialsOf } from "@/lib/time";
@@ -62,6 +63,7 @@ export function SettingsClient() {
 
   const { coaches, refetch: refetchCoaches } = useCoachesWithRefetch();
   const [addCoachOpen, setAddCoachOpen] = useState(false);
+  const [, startSavingRate] = useTransition();
   const { sessionTypes, refetch: refetchSessionTypes } = useSessionTypesWithRefetch();
   const [addSessionTypeOpen, setAddSessionTypeOpen] = useState(false);
 
@@ -209,12 +211,13 @@ export function SettingsClient() {
 
       {tab === "Staff" && (
         <Card className="overflow-hidden py-1.5">
-          <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-3.5 border-b border-divider px-[22px] py-3 text-[11px] tracking-wider text-muted uppercase">
+          <div className="grid grid-cols-[minmax(0,1fr)_140px_96px] gap-3.5 border-b border-divider px-[22px] py-3 text-[11px] tracking-wider text-muted uppercase">
             <span>Staff</span>
+            <span className="text-right">Commission %</span>
             <span className="text-center">Status</span>
           </div>
           {coaches.map((c) => (
-            <div key={c.id} className="grid grid-cols-[minmax(0,1fr)_96px] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
+            <div key={c.id} className="grid grid-cols-[minmax(0,1fr)_140px_96px] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
               <span className="flex min-w-0 items-center gap-2.5">
                 <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-row text-[11.5px] font-semibold text-muted">{initialsOf(c.name)}</span>
                 <span className="min-w-0 flex-1">
@@ -224,6 +227,26 @@ export function SettingsClient() {
                   </span>
                   <span className="block truncate text-xs text-muted">{c.email}</span>
                 </span>
+              </span>
+              <span className="flex items-center justify-end gap-1">
+                <input
+                  key={`${c.id}-${c.commissionRate}`}
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  defaultValue={Math.round(c.commissionRate * 100)}
+                  onBlur={(e) => {
+                    const pct = Number(e.target.value);
+                    if (!(pct >= 0 && pct <= 100)) return;
+                    startSavingRate(async () => {
+                      await updateCoachCommissionRate(c.id, pct / 100);
+                      refetchCoaches();
+                    });
+                  }}
+                  className="h-9 w-16 rounded-lg border border-divider bg-transparent px-2 text-right text-sm tabular-nums"
+                />
+                <span className="text-muted">%</span>
               </span>
               <span className={`rounded-md py-0.5 text-center text-[11.5px] ${c.active ? "bg-ok/15 text-ok" : "bg-row text-muted"}`}>
                 {c.active ? "Active" : "Inactive"}
@@ -319,6 +342,17 @@ export function SettingsClient() {
               <input
                 value={values.lateCancelFee}
                 onChange={(e) => patch({ lateCancelFee: e.target.value })}
+                className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] tracking-wider text-muted uppercase">Payroll hourly rate (Bodpod / Class)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.5"
+                value={values.hourlyPayRate}
+                onChange={(e) => patch({ hourlyPayRate: Number(e.target.value) })}
                 className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
               />
             </label>

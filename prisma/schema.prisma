@@ -19,6 +19,10 @@ model Coach {
   notifyFlags Json?
   landing     String            @default("Dashboard")
   calendarView String           @default("Week")
+  /** Payroll commission fraction (0.25 = 25%) for Personal Training / Group Training / Remote
+      Consult / Blueprint and Baseline sessions — set per coach (tenure-based in practice, but
+      not auto-computed from a formula). 0 doubles as "not configured yet". */
+  commissionRate Float          @default(0)
   members     Member[]
   sales       Sale[]
   timeOff     TimeOff[]
@@ -271,6 +275,8 @@ model BusinessSettings {
   salesTax         String   @default("GST 5%")
   cardTerminal     String   @default("Front desk terminal · connected")
   lateCancelFee    String   @default("$25.00")
+  /** Flat payroll rate for Bodpod / Class (and any custom session type) hours. */
+  hourlyPayRate    Float    @default(20)
   /** { emailReceipt, autoCharge, packageAlert, dailySummary } */
   paymentsFlags    Json     @default("{\"emailReceipt\":true,\"autoCharge\":true,\"packageAlert\":true,\"dailySummary\":false}")
   /** { reminder, cancelNotice, waitlistOpen, birthday, marketing } */

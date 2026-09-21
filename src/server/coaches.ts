@@ -15,6 +15,7 @@ export interface CoachRow {
   notifyFlags: { dayAhead: boolean; manualBooking: boolean; classJoin: boolean } | null;
   landing: string;
   calendarView: string;
+  commissionRate: number;
 }
 
 function toCoachRow(row: {
@@ -27,6 +28,7 @@ function toCoachRow(row: {
   notifyFlags: unknown;
   landing: string;
   calendarView: string;
+  commissionRate: number;
 }): CoachRow {
   return { ...row, notifyFlags: row.notifyFlags as CoachRow["notifyFlags"] };
 }
@@ -98,4 +100,15 @@ export async function updateCoachPreferences(coachId: string, input: CoachPrefer
     data: { notifyFlags: input.notifyFlags as object, landing: input.landing, calendarView: input.calendarView },
   });
   revalidatePath("/preferences");
+}
+
+/** `rate` is a fraction (0.25 = 25%) — admin-only, since this sets what a coach actually gets paid. */
+export async function updateCoachCommissionRate(coachId: string, rate: number): Promise<void> {
+  const requester = await getCurrentCoach();
+  if (!requester?.isAdmin) throw new Error("Only an admin can set a coach's commission rate.");
+  if (!(rate >= 0 && rate <= 1)) throw new Error("Commission rate must be between 0% and 100%.");
+
+  await db.coach.update({ where: { id: coachId }, data: { commissionRate: rate } });
+  revalidatePath("/settings");
+  revalidatePath("/payroll");
 }

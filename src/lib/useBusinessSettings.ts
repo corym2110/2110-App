@@ -17,6 +17,7 @@ export const DEFAULT_BUSINESS_SETTINGS: BusinessSettingsDTO = {
   salesTax: "GST 5%",
   cardTerminal: "Front desk terminal · connected",
   lateCancelFee: "$25.00",
+  hourlyPayRate: 20,
   paymentsFlags: { emailReceipt: true, autoCharge: true, packageAlert: true, dailySummary: false },
   notifyFlags: { reminder: true, cancelNotice: true, waitlistOpen: true, birthday: false, marketing: false },
   reminderTiming: "24 hours before",
