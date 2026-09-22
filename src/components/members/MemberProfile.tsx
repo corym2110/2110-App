@@ -137,6 +137,22 @@ export function MemberProfile({
     return rows.sort((a, b) => (a.iso === b.iso ? a.start - b.start : a.iso < b.iso ? -1 : 1));
   }, [upcomingData, tomorrow, member.name, coaches]);
 
+  /** Real session types this member is currently booked into, not a stored label — a client
+      doing both Personal Training and Bodpod shows both. */
+  const activeTypes = useMemo(() => [...new Set(upcoming.map((u) => u.type))], [upcoming]);
+
+  /** "Checked in" vs "No-show"/"Late cancel" over the last 90 days — "Cancelled" (a staff-side
+      cancellation, not the member's doing) is excluded from both sides so it doesn't count
+      against them. Null (no attendance data) means we can't say anything yet. */
+  const attendancePct = useMemo(() => {
+    const counted = history.filter((h) => h.status === "Checked in" || h.status === "No-show" || h.status === "Late cancel");
+    if (counted.length === 0) return null;
+    const attended = counted.filter((h) => h.status === "Checked in").length;
+    return Math.round((attended / counted.length) * 100);
+  }, [history]);
+
+  const sessionsLeft = useMemo(() => credits.filter((c) => !c.appliedOccurrenceKey).length, [credits]);
+
   const [historyTab, setHistoryTab] = useState<"upcoming" | "completed">("upcoming");
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [confirmCancel, setConfirmCancel] = useState<"selected" | "all" | null>(null);
@@ -237,89 +253,45 @@ export function MemberProfile({
 
       <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2">
         <Card className="px-[22px] py-5">
-          <div className="mb-3 flex items-baseline justify-between gap-2.5">
-            <h5 className="text-[15.5px] font-semibold">Shared accounts</h5>
-            <button type="button" onClick={() => setAddOpen((o) => !o)} className="text-[12.5px] text-muted hover:text-fg">
-              {addOpen ? "Cancel" : "Add"}
-            </button>
+          <h5 className="mb-3 text-[15.5px] font-semibold">Membership</h5>
+          <div className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1.5 text-[13.5px]">
+            <span className="text-muted">Plan</span>
+            <span>{activeTypes.length > 0 ? activeTypes.join(", ") : "No active sessions"}</span>
+            <span className="text-muted">Renews</span>
+            <span>{membership && membership.status === "active" ? membership.nextBillDate : "No recurring plan"}</span>
+            <span className="text-muted">Sessions left</span>
+            <span>{sessionsLeft > 0 ? `${sessionsLeft} session${sessionsLeft === 1 ? "" : "s"}` : "No credits"}</span>
+            <span className="text-muted">Attendance</span>
+            <span>{attendancePct === null ? "No attendance data" : `${attendancePct}% last 90 days`}</span>
+            <span className="text-muted">Balance</span>
+            <span className={member.balance > 0 ? "text-bad" : "text-muted"}>{member.balance > 0 ? `${money(member.balance)} due` : "$0.00"}</span>
           </div>
-          {addOpen && (
-            <div className="mb-3.5 flex gap-1.5">
-              <Select
-                value={addPick}
-                onChange={setAddPick}
-                placeholder="Choose a member…"
-                options={candidates.filter((c) => !paysFor.some((p) => p.id === c.id)).map((c) => ({ value: c.id, label: c.name }))}
-                className="h-[34px] min-w-0 flex-1 rounded-lg px-2.5 text-[13px]"
-              />
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => {
-                  if (!addPick) return;
-                  const pick = addPick;
-                  startTransition(async () => {
-                    await addSharedAccount(member.id, pick);
-                  });
-                  setAddOpen(false);
-                  setAddPick("");
-                }}
-                className="h-[34px] flex-none rounded-lg bg-accent px-3.5 text-[13px] font-semibold text-on-accent disabled:opacity-60"
-              >
-                Link
-              </button>
-            </div>
-          )}
-          {paysFor.length > 0 && (
-            <>
-              <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Can purchase for</div>
-              <div className="mb-3.5 flex flex-col gap-1">
-                {paysFor.map((p) => (
-                  <div key={p.id} className="-mx-2 flex items-center gap-1">
-                    <Link
-                      href={`/members/${p.id}`}
-                      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13.5px] text-fg hover:bg-row"
-                    >
-                      <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-row text-[10px] font-semibold text-muted">
-                        {initialsOf(p.name)}
-                      </span>
-                      <span className="min-w-0 truncate">{p.name}</span>
-                    </Link>
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => startTransition(async () => { await removeSharedAccount(member.id, p.id); })}
-                      title="Remove link"
-                      className="grid h-[26px] w-[26px] flex-none place-items-center rounded-md text-muted hover:bg-row hover:text-fg"
-                    >
-                      <XIcon size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-          {paidBy.length > 0 && (
-            <>
-              <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Sessions paid by</div>
-              <div className="flex flex-col gap-1">
-                {paidBy.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={`/members/${p.id}`}
-                    className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13.5px] text-fg hover:bg-row"
-                  >
-                    <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-row text-[10px] font-semibold text-muted">
-                      {initialsOf(p.name)}
-                    </span>
-                    <span className="min-w-0 truncate">{p.name}</span>
+          {unpaidSales.length > 0 && (
+            <div className="mt-3 flex flex-col gap-1.5 border-t border-divider pt-3">
+              <div className="text-[11px] tracking-wider text-muted uppercase">Unpaid charges</div>
+              {unpaidSales.map((s) => (
+                <div key={s.id} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[13px]">{s.summary}</span>
+                  <span className="flex-none text-[13px] tabular-nums text-bad">{money(s.total)}</span>
+                  <Link href={`/invoices/${s.id}`} className="flex-none text-[11.5px] text-link hover:text-link-hover">
+                    Invoice
                   </Link>
-                ))}
-              </div>
-            </>
-          )}
-          {paysFor.length === 0 && paidBy.length === 0 && (
-            <div className="text-[13px] text-pretty text-muted">No linked accounts. Add one to let someone else pay for this member&apos;s sessions.</div>
+                  <button
+                    type="button"
+                    disabled={isPayingSale}
+                    onClick={() =>
+                      startPaySale(async () => {
+                        await markSalePaid(s.id, member.id);
+                        getUnpaidSalesForMember(member.id).then(setUnpaidSales);
+                      })
+                    }
+                    className="h-7 flex-none rounded-md border border-divider px-2 text-[11.5px] hover:bg-row disabled:opacity-60"
+                  >
+                    Mark paid
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
         </Card>
 
@@ -430,50 +402,99 @@ export function MemberProfile({
         </Card>
 
         <Card className="px-[22px] py-5">
-          <h5 className="mb-3 text-[15.5px] font-semibold">Membership</h5>
-          <div className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1.5 text-[13.5px]">
-            <span className="text-muted">Plan</span>
-            <span>{member.plan}</span>
-            <span className="text-muted">Renews</span>
-            <span>{member.plan.includes("membership") ? "Oct 1, 2026" : "On package completion"}</span>
-            <span className="text-muted">Sessions left</span>
-            <span>{member.plan.includes("pack") ? "7 sessions left" : "Unlimited"}</span>
-            <span className="text-muted">Attendance</span>
-            <span>92% last 90 days</span>
-            <span className="text-muted">Balance</span>
-            <span className={member.balance > 0 ? "text-bad" : "text-muted"}>{member.balance > 0 ? `${money(member.balance)} due` : "$0.00"}</span>
+          <div className="mb-3 flex items-baseline justify-between gap-2.5">
+            <h5 className="text-[15.5px] font-semibold">Shared accounts</h5>
+            <button type="button" onClick={() => setAddOpen((o) => !o)} className="text-[12.5px] text-muted hover:text-fg">
+              {addOpen ? "Cancel" : "Add"}
+            </button>
           </div>
-          {unpaidSales.length > 0 && (
-            <div className="mt-3 flex flex-col gap-1.5 border-t border-divider pt-3">
-              <div className="text-[11px] tracking-wider text-muted uppercase">Unpaid charges</div>
-              {unpaidSales.map((s) => (
-                <div key={s.id} className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{s.summary}</span>
-                  <span className="flex-none text-[13px] tabular-nums text-bad">{money(s.total)}</span>
-                  <Link href={`/invoices/${s.id}`} className="flex-none text-[11.5px] text-link hover:text-link-hover">
-                    Invoice
-                  </Link>
-                  <button
-                    type="button"
-                    disabled={isPayingSale}
-                    onClick={() =>
-                      startPaySale(async () => {
-                        await markSalePaid(s.id, member.id);
-                        getUnpaidSalesForMember(member.id).then(setUnpaidSales);
-                      })
-                    }
-                    className="h-7 flex-none rounded-md border border-divider px-2 text-[11.5px] hover:bg-row disabled:opacity-60"
-                  >
-                    Mark paid
-                  </button>
-                </div>
-              ))}
+          {addOpen && (
+            <div className="mb-3.5 flex gap-1.5">
+              <Select
+                value={addPick}
+                onChange={setAddPick}
+                placeholder="Choose a member…"
+                options={candidates.filter((c) => !paysFor.some((p) => p.id === c.id)).map((c) => ({ value: c.id, label: c.name }))}
+                className="h-[34px] min-w-0 flex-1 rounded-lg px-2.5 text-[13px]"
+              />
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => {
+                  if (!addPick) return;
+                  const pick = addPick;
+                  startTransition(async () => {
+                    await addSharedAccount(member.id, pick);
+                  });
+                  setAddOpen(false);
+                  setAddPick("");
+                }}
+                className="h-[34px] flex-none rounded-lg bg-accent px-3.5 text-[13px] font-semibold text-on-accent disabled:opacity-60"
+              >
+                Link
+              </button>
             </div>
+          )}
+          {paysFor.length > 0 && (
+            <>
+              <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Can purchase for</div>
+              <div className="mb-3.5 flex flex-col gap-1">
+                {paysFor.map((p) => (
+                  <div key={p.id} className="-mx-2 flex items-center gap-1">
+                    <Link
+                      href={`/members/${p.id}`}
+                      className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13.5px] text-fg hover:bg-row"
+                    >
+                      <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-row text-[10px] font-semibold text-muted">
+                        {initialsOf(p.name)}
+                      </span>
+                      <span className="min-w-0 truncate">{p.name}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => startTransition(async () => { await removeSharedAccount(member.id, p.id); })}
+                      title="Remove link"
+                      className="grid h-[26px] w-[26px] flex-none place-items-center rounded-md text-muted hover:bg-row hover:text-fg"
+                    >
+                      <XIcon size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {paidBy.length > 0 && (
+            <>
+              <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Sessions paid by</div>
+              <div className="flex flex-col gap-1">
+                {paidBy.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/members/${p.id}`}
+                    className="-mx-2 flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13.5px] text-fg hover:bg-row"
+                  >
+                    <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-row text-[10px] font-semibold text-muted">
+                      {initialsOf(p.name)}
+                    </span>
+                    <span className="min-w-0 truncate">{p.name}</span>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+          {paysFor.length === 0 && paidBy.length === 0 && (
+            <div className="text-[13px] text-pretty text-muted">No linked accounts. Add one to let someone else pay for this member&apos;s sessions.</div>
           )}
         </Card>
 
         <Card className="px-[22px] py-5">
-          <h5 className="mb-3 text-[15.5px] font-semibold">Notes</h5>
+          <div className="mb-3 flex items-baseline justify-between gap-2.5">
+            <h5 className="text-[15.5px] font-semibold">Notes</h5>
+            <button type="button" onClick={() => setEditOpen(true)} className="text-[12.5px] text-muted hover:text-fg">
+              Edit
+            </button>
+          </div>
           <div className="text-[13.5px] text-pretty text-muted">{member.notes || "No notes yet."}</div>
         </Card>
       </div>
