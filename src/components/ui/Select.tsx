@@ -55,7 +55,7 @@ export function Select({
         type="button"
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className={`flex min-w-0 items-center justify-between gap-2 border bg-transparent text-left disabled:cursor-not-allowed disabled:opacity-45 ${
+        className={`flex w-full min-w-0 items-center justify-between gap-2 border bg-transparent text-left disabled:cursor-not-allowed disabled:opacity-45 ${
           open ? "border-accent" : "border-divider"
         } ${className}`}
       >
