@@ -253,49 +253,6 @@ export function MemberProfile({
 
       <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2">
         <Card className="px-[22px] py-5">
-          <h5 className="mb-3 text-[15.5px] font-semibold">Membership</h5>
-          <div className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1.5 text-[13.5px]">
-            <span className="text-muted">Plan</span>
-            <span>{activeTypes.length > 0 ? activeTypes.join(", ") : "No active sessions"}</span>
-            <span className="text-muted">Renews</span>
-            <span>{membership && membership.status === "active" ? membership.nextBillDate : "No recurring plan"}</span>
-            <span className="text-muted">Sessions left</span>
-            <span>{sessionsLeft > 0 ? `${sessionsLeft} session${sessionsLeft === 1 ? "" : "s"}` : "No credits"}</span>
-            <span className="text-muted">Attendance</span>
-            <span>{attendancePct === null ? "No attendance data" : `${attendancePct}% last 90 days`}</span>
-            <span className="text-muted">Balance</span>
-            <span className={member.balance > 0 ? "text-bad" : "text-muted"}>{member.balance > 0 ? `${money(member.balance)} due` : "$0.00"}</span>
-          </div>
-          {unpaidSales.length > 0 && (
-            <div className="mt-3 flex flex-col gap-1.5 border-t border-divider pt-3">
-              <div className="text-[11px] tracking-wider text-muted uppercase">Unpaid charges</div>
-              {unpaidSales.map((s) => (
-                <div key={s.id} className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{s.summary}</span>
-                  <span className="flex-none text-[13px] tabular-nums text-bad">{money(s.total)}</span>
-                  <Link href={`/invoices/${s.id}`} className="flex-none text-[11.5px] text-link hover:text-link-hover">
-                    Invoice
-                  </Link>
-                  <button
-                    type="button"
-                    disabled={isPayingSale}
-                    onClick={() =>
-                      startPaySale(async () => {
-                        await markSalePaid(s.id, member.id);
-                        getUnpaidSalesForMember(member.id).then(setUnpaidSales);
-                      })
-                    }
-                    className="h-7 flex-none rounded-md border border-divider px-2 text-[11.5px] hover:bg-row disabled:opacity-60"
-                  >
-                    Mark paid
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-
-        <Card className="px-[22px] py-5">
           <div className="mb-3 flex items-baseline justify-between gap-2.5">
             <h5 className="text-[15.5px] font-semibold">Contact</h5>
             <button type="button" onClick={() => setEditOpen(true)} className="text-[12.5px] text-muted hover:text-fg">
@@ -399,6 +356,49 @@ export function MemberProfile({
               </button>
             </div>
           </div>
+        </Card>
+
+        <Card className="px-[22px] py-5">
+          <h5 className="mb-3 text-[15.5px] font-semibold">Membership</h5>
+          <div className="grid grid-cols-[auto_1fr] gap-x-3.5 gap-y-1.5 text-[13.5px]">
+            <span className="text-muted">Plan</span>
+            <span>{activeTypes.length > 0 ? activeTypes.join(", ") : "No active sessions"}</span>
+            <span className="text-muted">Renews</span>
+            <span>{membership && membership.status === "active" ? membership.nextBillDate : "No recurring plan"}</span>
+            <span className="text-muted">Sessions left</span>
+            <span>{sessionsLeft > 0 ? `${sessionsLeft} session${sessionsLeft === 1 ? "" : "s"}` : "No credits"}</span>
+            <span className="text-muted">Attendance</span>
+            <span>{attendancePct === null ? "No attendance data" : `${attendancePct}% last 90 days`}</span>
+            <span className="text-muted">Balance</span>
+            <span className={member.balance > 0 ? "text-bad" : "text-muted"}>{member.balance > 0 ? `${money(member.balance)} due` : "$0.00"}</span>
+          </div>
+          {unpaidSales.length > 0 && (
+            <div className="mt-3 flex flex-col gap-1.5 border-t border-divider pt-3">
+              <div className="text-[11px] tracking-wider text-muted uppercase">Unpaid charges</div>
+              {unpaidSales.map((s) => (
+                <div key={s.id} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-[13px]">{s.summary}</span>
+                  <span className="flex-none text-[13px] tabular-nums text-bad">{money(s.total)}</span>
+                  <Link href={`/invoices/${s.id}`} className="flex-none text-[11.5px] text-link hover:text-link-hover">
+                    Invoice
+                  </Link>
+                  <button
+                    type="button"
+                    disabled={isPayingSale}
+                    onClick={() =>
+                      startPaySale(async () => {
+                        await markSalePaid(s.id, member.id);
+                        getUnpaidSalesForMember(member.id).then(setUnpaidSales);
+                      })
+                    }
+                    className="h-7 flex-none rounded-md border border-divider px-2 text-[11.5px] hover:bg-row disabled:opacity-60"
+                  >
+                    Mark paid
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
 
         <Card className="px-[22px] py-5">
