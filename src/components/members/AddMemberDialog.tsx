@@ -25,6 +25,7 @@ export function AddMemberDialog({ existing, onClose, onSaved }: { existing?: Mem
   const [dateOfBirth, setDateOfBirth] = useState(existing?.dateOfBirth ?? "");
   const [emergencyContactName, setEmergencyContactName] = useState(existing?.emergencyContactName ?? "");
   const [emergencyContactPhone, setEmergencyContactPhone] = useState(existing?.emergencyContactPhone ?? "");
+  const [notes, setNotes] = useState(existing?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -38,7 +39,7 @@ export function AddMemberDialog({ existing, onClose, onSaved }: { existing?: Mem
   function save() {
     if (!canSave || isPending) return;
     setError(null);
-    const fields = { firstName, lastName, email, phone, gender, address, postalCode, city, province, dateOfBirth, emergencyContactName, emergencyContactPhone };
+    const fields = { firstName, lastName, email, phone, gender, address, postalCode, city, province, dateOfBirth, emergencyContactName, emergencyContactPhone, notes };
     startTransition(async () => {
       try {
         if (isEdit) {
@@ -198,6 +199,19 @@ export function AddMemberDialog({ existing, onClose, onSaved }: { existing?: Mem
               />
             </label>
           </div>
+        </div>
+
+        <div className="border-t border-divider pt-3.5">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11.5px] tracking-wider text-muted uppercase">Notes (optional)</span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Injury history, preferences, referral context…"
+              rows={3}
+              className="resize-none rounded-lg border border-divider bg-transparent px-2.5 py-2 text-sm"
+            />
+          </label>
         </div>
 
         {error && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">{error}</div>}

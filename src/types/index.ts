@@ -70,6 +70,7 @@ export interface Member {
   dateOfBirth?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  notes?: string;
 }
 
 export type AttendanceStatus = "Checked in" | "No-show" | "Late cancel" | "Cancelled";

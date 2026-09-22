@@ -21,6 +21,7 @@ interface MemberRow {
   dateOfBirth: Date | null;
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
+  notes: string | null;
   plan: string;
   since: string;
   coach: { name: string } | null;
@@ -65,6 +66,7 @@ function toMember(row: MemberRow, lastSession: string): Member {
     dateOfBirth: row.dateOfBirth ? row.dateOfBirth.toISOString().slice(0, 10) : undefined,
     emergencyContactName: row.emergencyContactName ?? undefined,
     emergencyContactPhone: row.emergencyContactPhone ?? undefined,
+    notes: row.notes ?? undefined,
   };
 }
 
@@ -99,6 +101,7 @@ export interface NewMemberInput {
   dateOfBirth?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  notes?: string;
 }
 
 export async function addMember(input: NewMemberInput): Promise<string> {
@@ -128,6 +131,7 @@ export async function addMember(input: NewMemberInput): Promise<string> {
       dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00Z`) : undefined,
       emergencyContactName: input.emergencyContactName?.trim() || undefined,
       emergencyContactPhone: input.emergencyContactPhone?.trim() || undefined,
+      notes: input.notes?.trim() || undefined,
       plan: "No plan yet",
       since: `${MONTHS_SHORT[now.getMonth()]} ${now.getFullYear()}`,
       coachId: coach?.id,
@@ -151,6 +155,7 @@ export interface MemberDetailsInput {
   dateOfBirth?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  notes?: string;
 }
 
 export async function updateMemberDetails(memberId: string, input: MemberDetailsInput): Promise<void> {
@@ -178,6 +183,7 @@ export async function updateMemberDetails(memberId: string, input: MemberDetails
       dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00Z`) : null,
       emergencyContactName: input.emergencyContactName?.trim() || null,
       emergencyContactPhone: input.emergencyContactPhone?.trim() || null,
+      notes: input.notes?.trim() || null,
     },
   });
 

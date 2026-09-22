@@ -474,9 +474,7 @@ export function MemberProfile({
 
         <Card className="px-[22px] py-5">
           <h5 className="mb-3 text-[15.5px] font-semibold">Notes</h5>
-          <div className="text-[13.5px] text-pretty text-muted">
-            Right shoulder mobility work before overhead pressing. Prefers early sessions and texts to confirm the night before.
-          </div>
+          <div className="text-[13.5px] text-pretty text-muted">{member.notes || "No notes yet."}</div>
         </Card>
       </div>
 
