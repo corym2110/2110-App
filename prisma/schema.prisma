@@ -124,6 +124,8 @@ model Member {
   dateOfBirth           DateTime?
   emergencyContactName  String?
   emergencyContactPhone String?
+  /** Free-text staff notes on this member (injury history, preferences, referral context, etc). */
+  notes                 String?         @db.Text
   /** Clover Customer id — the member's saved card on file. Never stores an actual card number;
       the real card lives in Clover's vault, we just keep the reference needed to charge it later.
       Brand/last4/expiry below are display-only, captured from the save response itself rather
