@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
-import { addDays, dowIndex, DOW_LABELS, isoOf } from "@/lib/time";
+import { addDays, dowIndex, DOW_LABELS, isoOf, slotKey } from "@/lib/time";
 import type { CoachId, DayOfWeek, SessionTypeName, TimeOffEntry } from "@/types";
 
 export interface Occurrence {
@@ -334,6 +334,51 @@ export async function addToClass(occurrenceKey: string, memberName: string): Pro
 export async function promoteFromWaitlist(occurrenceKey: string, memberName: string): Promise<void> {
   await removeFromWaitlist(occurrenceKey, memberName);
   await addToClass(occurrenceKey, memberName);
+}
+
+/** One person cancelling out of a class roster while the session itself stays on — the "they
+    emailed to cancel" case, distinct from cancelling the whole occurrence. Two independent
+    cutoffs, measured from the class's actual start time:
+      - More than 24h notice: a clean cancel — they come off the roster entirely.
+      - 24h or less: treated the same as a Personal Training late cancel (same `setAttendanceStatus`
+        mechanism, same policy) — they stay on the roster, still billed, still "on the books,"
+        but their physical spot is still free for someone else.
+      - Either way, if there's still more than 30 minutes before the class starts, the
+        longest-waiting person on the waitlist is promoted into the newly-open spot; within 30
+        minutes there's no realistic way anyone could arrive in time, so no one is bumped. */
+export async function cancelRosterMember(
+  occurrenceKey: string,
+  memberName: string,
+  iso: string,
+  start: number,
+  coachId: string,
+): Promise<{ outcome: "removed" | "late-cancel"; promoted: string | null }> {
+  const minutesUntilStart = (new Date(`${iso}T00:00:00`).getTime() + start * 60_000 - Date.now()) / 60_000;
+
+  let outcome: "removed" | "late-cancel";
+  if (minutesUntilStart > 24 * 60) {
+    const sourceId = occurrenceKey.slice(0, occurrenceKey.lastIndexOf("@"));
+    await db.classAddIn.deleteMany({ where: { occurrenceKey, memberName } });
+    const booking = await db.booking.findUnique({ where: { id: sourceId } });
+    if (booking?.roster.includes(memberName)) {
+      await db.booking.update({ where: { id: sourceId }, data: { roster: booking.roster.filter((n) => n !== memberName) } });
+    }
+    outcome = "removed";
+  } else {
+    await setAttendanceStatus(slotKey(iso, start, coachId, memberName), iso, "Late cancel");
+    outcome = "late-cancel";
+  }
+
+  let promoted: string | null = null;
+  if (minutesUntilStart > 30) {
+    const next = await db.waitlistEntry.findFirst({ where: { occurrenceKey }, orderBy: { createdAt: "asc" } });
+    if (next) {
+      await promoteFromWaitlist(occurrenceKey, next.memberName);
+      promoted = next.memberName;
+    }
+  }
+  afterSchedule();
+  return { outcome, promoted };
 }
 
 // --- Coach availability ---

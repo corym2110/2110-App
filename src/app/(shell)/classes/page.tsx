@@ -8,8 +8,8 @@ import { Select } from "@/components/ui/Select";
 import { useThemeStore } from "@/stores/theme";
 import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
 import { BookingDialog } from "@/components/schedule/BookingDialog";
-import { setAttendanceStatus, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist } from "@/server/schedule";
-import { addDays, clock, formatDateShort, formatDateLong, initialsOf, isoOf, mondayOf, slotKey, startOfToday } from "@/lib/time";
+import { setAttendanceStatus, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist, cancelRosterMember } from "@/server/schedule";
+import { activeRosterCount, addDays, clock, formatDateShort, formatDateLong, initialsOf, isoOf, mondayOf, slotKey, startOfToday } from "@/lib/time";
 import { capacityOf, sessionTypeColor } from "@/data/mock/sessionTypes";
 import { useMembers } from "@/lib/useMembers";
 import { useCoaches } from "@/lib/useCoaches";
@@ -23,6 +23,7 @@ export default function ClassesPage() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [addPick, setAddPick] = useState("");
   const [addClassOpen, setAddClassOpen] = useState(false);
+  const [promotedNote, setPromotedNote] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   const dark = useThemeStore((s) => s.theme === "dark");
@@ -109,7 +110,7 @@ export default function ClassesPage() {
             {occ.map((o) => {
               const cap = capacityOf(o.type, o.name, o.capacity);
               const roster = [...(o.roster ?? []), ...(classAdds[o.key] ?? [])];
-              const head = roster.length;
+              const head = activeRosterCount(roster, attendance, o.iso, o.start, o.coach);
               const full = cap > 0 && head >= cap;
               const waiting = waitlists[o.key] ?? [];
               const checkedIn = roster.filter((n) => attendance[slotKey(o.iso, o.start, o.coach, n)] === "Checked in").length;
@@ -212,12 +213,35 @@ export default function ClassesPage() {
                       className="flex flex-1 min-w-0 items-center gap-2.5 rounded-[9px] border border-divider px-2.5 py-1.5 text-fg hover:bg-row"
                     >
                       <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-row text-[10px] font-semibold text-muted">{initialsOf(n)}</span>
-                      <span className={`min-w-0 flex-1 truncate text-[13.5px] ${status === "No-show" ? "line-through" : ""}`}>{n}</span>
+                      <span className={`min-w-0 flex-1 truncate text-[13.5px] ${status === "No-show" || status === "Late cancel" ? "line-through" : ""}`}>{n}</span>
+                      {status === "Late cancel" && <span className="flex-none text-[11px] text-muted">Late cancel</span>}
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        startTransition(async () => {
+                          setPromotedNote(null);
+                          const { outcome, promoted } = await cancelRosterMember(selected!.key, n, selected!.iso, selected!.start, selected!.coach);
+                          if (promoted) {
+                            setPromotedNote(
+                              outcome === "late-cancel"
+                                ? `${n} is a late cancel — still billed. ${promoted} was moved in from the waitlist.`
+                                : `${promoted} was moved in from the waitlist.`,
+                            );
+                          }
+                          scheduleData.refetch();
+                        })
+                      }
+                      title="Cancel"
+                      className="grid h-9 w-8 flex-none place-items-center rounded-[9px] text-muted hover:bg-row hover:text-bad"
+                    >
+                      <XIcon size={14} />
+                    </button>
                   </div>
                 );
               })}
             </div>
+            {promotedNote && <div className="mt-2 text-[12.5px] text-accent">{promotedNote}</div>}
 
             <div className="mt-3.5 flex gap-1.5">
               <Select
@@ -234,7 +258,8 @@ export default function ClassesPage() {
                 onClick={() => {
                   if (!addPick) return;
                   const cap = capacityOf(selected!.type, selected!.name, selected!.capacity);
-                  const head = (selected!.roster ?? []).length + (classAdds[selected!.key] ?? []).length;
+                  const rosterNow = [...(selected!.roster ?? []), ...(classAdds[selected!.key] ?? [])];
+                  const head = activeRosterCount(rosterNow, attendance, selected!.iso, selected!.start, selected!.coach);
                   const pick = addPick;
                   startTransition(async () => {
                     if (cap > 0 && head >= cap) await addToWaitlist(selected!.key, pick);
@@ -247,7 +272,8 @@ export default function ClassesPage() {
               >
                 {(() => {
                   const cap = capacityOf(selected.type, selected.name, selected.capacity);
-                  const head = (selected.roster ?? []).length + (classAdds[selected.key] ?? []).length;
+                  const rosterNow = [...(selected.roster ?? []), ...(classAdds[selected.key] ?? [])];
+                  const head = activeRosterCount(rosterNow, attendance, selected.iso, selected.start, selected.coach);
                   return cap > 0 && head >= cap ? "Waitlist" : "Book in";
                 })()}
               </button>

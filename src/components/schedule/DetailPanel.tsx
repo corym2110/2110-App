@@ -3,9 +3,9 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import type { Occurrence } from "@/server/schedule";
-import { setAttendanceStatus, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist } from "@/server/schedule";
+import { setAttendanceStatus, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist, cancelRosterMember } from "@/server/schedule";
 import { capacityOf } from "@/data/mock/sessionTypes";
-import { clock, formatDateLong, initialsOf, slotKey } from "@/lib/time";
+import { activeRosterCount, clock, formatDateLong, initialsOf, slotKey } from "@/lib/time";
 import { XIcon, PencilIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { PaidWithControl } from "@/components/schedule/PaidWithControl";
@@ -37,6 +37,7 @@ export function DetailPanel({
   onDataChanged: () => void;
 }) {
   const [addPick, setAddPick] = useState("");
+  const [promotedNote, setPromotedNote] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   function setStatus(key: string, status: AttendanceStatus | null) {
@@ -49,7 +50,7 @@ export function DetailPanel({
   const isGroup = !!occurrence.roster?.length;
   const roster = [...(occurrence.roster ?? []), ...(classAdds[occurrence.key] ?? [])];
   const cap = capacityOf(occurrence.type, occurrence.name, occurrence.capacity);
-  const head = isGroup ? roster.length : 0;
+  const head = isGroup ? activeRosterCount(roster, attendance, occurrence.iso, occurrence.start, occurrence.coach) : 0;
   const full = cap > 0 && head >= cap;
   const waiting = waitlists[occurrence.key] ?? [];
   const member = !isGroup ? members.find((m) => m.name === occurrence.name) : undefined;
@@ -184,12 +185,35 @@ export function DetailPanel({
                   </button>
                   <Link href={m ? `/members/${m.id}` : "/members"} className="flex min-w-0 flex-1 items-center gap-2.5 rounded-[9px] border border-divider px-2.5 py-1.5 text-fg hover:bg-row">
                     <span className="grid h-6 w-6 flex-none place-items-center rounded-full bg-row text-[10px] font-semibold text-muted">{initialsOf(n)}</span>
-                    <span className={`min-w-0 flex-1 truncate text-[13.5px] ${status === "No-show" ? "line-through" : ""}`}>{n}</span>
+                    <span className={`min-w-0 flex-1 truncate text-[13.5px] ${status === "No-show" || status === "Late cancel" ? "line-through" : ""}`}>{n}</span>
+                    {status === "Late cancel" && <span className="flex-none text-[11px] text-muted">Late cancel</span>}
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      startTransition(async () => {
+                        setPromotedNote(null);
+                        const { outcome, promoted } = await cancelRosterMember(occurrence.key, n, occurrence.iso, occurrence.start, occurrence.coach);
+                        if (promoted) {
+                          setPromotedNote(
+                            outcome === "late-cancel"
+                              ? `${n} is a late cancel — still billed. ${promoted} was moved in from the waitlist.`
+                              : `${promoted} was moved in from the waitlist.`,
+                          );
+                        }
+                        onDataChanged();
+                      })
+                    }
+                    title="Cancel"
+                    className="grid h-9 w-8 flex-none place-items-center rounded-[9px] text-muted hover:bg-row hover:text-bad"
+                  >
+                    <XIcon size={14} />
+                  </button>
                 </div>
               );
             })}
           </div>
+          {promotedNote && <div className="mt-2 text-[12.5px] text-accent">{promotedNote}</div>}
 
           <div className="mt-3.5 flex gap-1.5">
             <Select

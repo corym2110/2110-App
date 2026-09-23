@@ -75,6 +75,12 @@ export function slotKey(iso: string, start: number, coachId: string, name = ""):
   return `${iso}-${start}-${coachId}-${name}`;
 }
 
+/** A late cancel stays on a class roster (still billed, still "on the books") but its spot is
+    free — so it shouldn't count toward capacity the way an active roster member does. */
+export function activeRosterCount(roster: string[], attendance: Record<string, string>, iso: string, start: number, coachId: string): number {
+  return roster.filter((n) => attendance[slotKey(iso, start, coachId, n)] !== "Late cancel").length;
+}
+
 export function initialsOf(name: string): string {
   return name
     .split(" ")
