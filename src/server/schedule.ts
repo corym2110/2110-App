@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
-import { addDays, dowIndex, DOW_LABELS, isoOf, slotKey } from "@/lib/time";
+import { addDays, dowIndex, DOW_LABELS, isoOf, minutesUntil, slotKey } from "@/lib/time";
 import type { CoachId, DayOfWeek, SessionTypeName, TimeOffEntry } from "@/types";
 
 export interface Occurrence {
@@ -353,7 +353,7 @@ export async function cancelRosterMember(
   start: number,
   coachId: string,
 ): Promise<{ outcome: "removed" | "late-cancel"; promoted: string | null }> {
-  const minutesUntilStart = (new Date(`${iso}T00:00:00`).getTime() + start * 60_000 - Date.now()) / 60_000;
+  const minutesUntilStart = minutesUntil(iso, start);
 
   let outcome: "removed" | "late-cancel";
   if (minutesUntilStart > 24 * 60) {

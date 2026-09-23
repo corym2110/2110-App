@@ -81,6 +81,30 @@ export function activeRosterCount(roster: string[], attendance: Record<string, s
   return roster.filter((n) => attendance[slotKey(iso, start, coachId, n)] !== "Late cancel").length;
 }
 
+/** Business timezone — Calgary, AB. Vercel's server functions run in UTC, so any code comparing
+    an occurrence's iso+start against "right now" (not just formatting a date) needs this: a naive
+    `new Date(iso + "T00:00:00")` is parsed as UTC midnight on the server, not Mountain midnight,
+    which silently throws time-until-start math off by 6-7 hours (DST-dependent). Reading "now" as
+    Mountain wall-clock time via Intl (DST-aware) instead of applying a fixed UTC offset avoids
+    that entirely. */
+const BUSINESS_TZ = "America/Denver";
+
+/** Minutes from right now until the given iso+start (Mountain time), positive if it's still ahead. */
+export function minutesUntil(iso: string, start: number): number {
+  const now = new Date();
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", { timeZone: BUSINESS_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  );
+  const nowIso = `${parts.year}-${parts.month}-${parts.day}`;
+  const nowMinutes = Number(parts.hour) * 60 + Number(parts.minute);
+  // Both sides parsed the same naive way, so the day-count difference is exact regardless of
+  // what timezone the runtime treats "T00:00:00" as — only the whole-day delta is used here.
+  const dayDiff = Math.round((new Date(`${iso}T00:00:00`).getTime() - new Date(`${nowIso}T00:00:00`).getTime()) / 86_400_000);
+  return dayDiff * 1440 + (start - nowMinutes);
+}
+
 export function initialsOf(name: string): string {
   return name
     .split(" ")
