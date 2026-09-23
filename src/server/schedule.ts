@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { addDays, dowIndex, DOW_LABELS, isoOf } from "@/lib/time";
+import { notifyManualBooking, notifyClassJoin, notifyCancellation, notifyWaitlistOpen } from "./notifications";
 import type { CoachId, DayOfWeek, SessionTypeName, TimeOffEntry } from "@/types";
 
 export interface Occurrence {
@@ -167,6 +168,7 @@ export async function addBooking(input: NewBookingInput): Promise<string> {
     },
   });
   afterSchedule();
+  await notifyManualBooking(input.coachId, input.name, input.iso, input.start);
   return row.id;
 }
 
@@ -212,16 +214,34 @@ export async function addSeries(input: NewSeriesInput): Promise<string> {
 export async function cancelOccurrence(sourceId: string, key: string): Promise<void> {
   const iso = key.slice(key.lastIndexOf("@") + 1);
   const booking = await db.booking.findUnique({ where: { id: sourceId } });
+  let coachId: string | null = null;
+  let name = "";
+  let start = 0;
   if (booking) {
+    coachId = booking.coachId;
+    name = booking.name;
+    start = booking.start;
     await db.booking.delete({ where: { id: sourceId } });
   } else {
     const series = await db.recurringSeries.findUnique({ where: { id: sourceId } });
-    if (series && !series.excludedDates.includes(iso)) {
-      await db.recurringSeries.update({ where: { id: sourceId }, data: { excludedDates: [...series.excludedDates, iso] } });
+    if (series) {
+      coachId = series.coachId;
+      name = series.clientName;
+      const days = series.days as Partial<Record<DayOfWeek, number>>;
+      start = days[DOW_LABELS[dowIndex(new Date(`${iso}T00:00:00`))]] ?? 0;
+      if (!series.excludedDates.includes(iso)) {
+        await db.recurringSeries.update({ where: { id: sourceId }, data: { excludedDates: [...series.excludedDates, iso] } });
+      }
     }
   }
   await db.sessionCredit.updateMany({ where: { appliedOccurrenceKey: key }, data: { appliedOccurrenceKey: null, appliedIso: null } });
   afterSchedule();
+
+  if (coachId) {
+    await notifyCancellation(coachId, name, iso, start);
+    const waitCount = await db.waitlistEntry.count({ where: { occurrenceKey: key } });
+    if (waitCount > 0) await notifyWaitlistOpen(coachId, iso, start, waitCount);
+  }
 }
 
 /** Moves/edits one occurrence to a new date/time/coach. A one-off booking is updated in place;
@@ -321,6 +341,22 @@ export async function removeFromWaitlist(occurrenceKey: string, memberName: stri
   afterSchedule();
 }
 
+/** Resolves the coach and start time for an occurrence key from its source booking or
+    recurring series — used to address a notification without needing the full occurrence
+    already resolved by the caller. */
+async function resolveOccurrenceSource(occurrenceKey: string): Promise<{ coachId: string; start: number } | null> {
+  const sourceId = occurrenceKey.slice(0, occurrenceKey.lastIndexOf("@"));
+  const iso = occurrenceKey.slice(occurrenceKey.lastIndexOf("@") + 1);
+  const booking = await db.booking.findUnique({ where: { id: sourceId } });
+  if (booking) return { coachId: booking.coachId, start: booking.start };
+  const series = await db.recurringSeries.findUnique({ where: { id: sourceId } });
+  if (!series) return null;
+  const days = series.days as Partial<Record<DayOfWeek, number>>;
+  const label = DOW_LABELS[dowIndex(new Date(`${iso}T00:00:00`))];
+  const start = days[label];
+  return start === undefined ? null : { coachId: series.coachId, start };
+}
+
 export async function addToClass(occurrenceKey: string, memberName: string): Promise<void> {
   const iso = occurrenceKey.slice(occurrenceKey.lastIndexOf("@") + 1);
   await db.classAddIn.upsert({
@@ -329,6 +365,8 @@ export async function addToClass(occurrenceKey: string, memberName: string): Pro
     update: {},
   });
   afterSchedule();
+  const source = await resolveOccurrenceSource(occurrenceKey);
+  if (source) await notifyClassJoin(source.coachId, memberName, iso, source.start);
 }
 
 export async function promoteFromWaitlist(occurrenceKey: string, memberName: string): Promise<void> {

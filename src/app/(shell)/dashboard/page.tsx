@@ -29,15 +29,17 @@ export default function DashboardPage() {
 
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(mondayOf(today), i)), [today]);
 
-  // Fetch one range wide enough to cover both "this week" and "this month" (they can spill into
-  // neighbouring months at the edges), so Day/Week/Month all come from a single query.
+  // Fetch one range wide enough to cover "this week", "this month", and tomorrow (they can
+  // spill past each other at the edges — e.g. tomorrow falls outside this week's range when
+  // today is a Sunday), so Day/Week/Month/Tomorrow all come from a single query.
   const { rangeFromIso, rangeToIso, daysInMonth } = useMemo(() => {
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
     const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const weekStart = weekDays[0];
     const weekEnd = weekDays[6];
+    const tomorrow = addDays(today, 1);
     const from = weekStart < monthStart ? weekStart : monthStart;
-    const to = weekEnd > monthEnd ? weekEnd : monthEnd;
+    const to = [weekEnd, monthEnd, tomorrow].reduce((a, b) => (b > a ? b : a));
     return { rangeFromIso: isoOf(from), rangeToIso: isoOf(to), daysInMonth: monthEnd.getDate() };
   }, [today, weekDays]);
 
@@ -45,6 +47,8 @@ export default function DashboardPage() {
   const { attendance } = scheduleData;
 
   const occurrences = occurrencesOn(scheduleData, isoOf(today));
+  const tomorrow = useMemo(() => addDays(today, 1), [today]);
+  const tomorrowOccurrences = occurrencesOn(scheduleData, isoOf(tomorrow));
 
   const weekOverview = weekDays.map((d) => ({
     date: d,
@@ -171,42 +175,72 @@ export default function DashboardPage() {
           </div>
         </Card>
 
-        <div className="grid grid-rows-[auto_minmax(200px,1fr)] gap-[18px]">
-          <Card className="flex flex-col gap-3 px-[22px] py-5">
-            <h5 className="text-[15.5px] font-semibold">Needs attention</h5>
-            {balanceDue.slice(0, 4).map((m) => (
-              <Link key={m.id} href={`/members/${m.id}`} className="-mx-2 flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-row">
-                <span className="mt-1.5 h-[7px] w-[7px] flex-none rounded-full bg-bad" />
-                <span>
-                  <span className="block text-[13.5px]">{m.name}</span>
-                  <span className="block text-xs text-muted">{money(m.balance)} balance due</span>
+        <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+          <div className="flex items-center justify-between">
+            <h5 className="text-[15.5px] font-semibold">Tomorrow</h5>
+            <span className="text-[13px] text-muted">{formatDateLong(tomorrow)}</span>
+          </div>
+
+          <div className="flex flex-1 flex-col">
+            {tomorrowOccurrences.map((o) => {
+              const isGroup = !!o.roster?.length;
+              const title = isGroup ? `${o.name || "Group Training"} (${o.roster!.length})` : o.name;
+              return (
+                <div key={o.key} className="flex items-center gap-4 border-b border-divider py-2.5">
+                  <span className="w-[104px] flex-none truncate text-[13.5px] tabular-nums text-muted">{clock(o.start)}</span>
+                  <span className="grid h-[26px] w-[26px] flex-none place-items-center rounded-full bg-row text-[10.5px] font-semibold text-muted">
+                    {isGroup ? "GR" : title.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+                  </span>
+                  <Link
+                    href={isGroup ? "/schedule" : memberHref(title, members)}
+                    className="min-w-0 flex-1 truncate text-sm text-fg hover:text-link"
+                  >
+                    {title}
+                  </Link>
+                  <span className="flex-none truncate text-[12.5px] text-muted">{o.type}</span>
+                </div>
+              );
+            })}
+            {tomorrowOccurrences.length === 0 && <div className="py-6 text-center text-[13.5px] text-muted">Nothing on tomorrow&apos;s schedule yet.</div>}
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-[18px]">
+        <Card className="flex flex-col gap-3 px-[22px] py-5">
+          <h5 className="text-[15.5px] font-semibold">Needs attention</h5>
+          {balanceDue.slice(0, 4).map((m) => (
+            <Link key={m.id} href={`/members/${m.id}`} className="-mx-2 flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-row">
+              <span className="mt-1.5 h-[7px] w-[7px] flex-none rounded-full bg-bad" />
+              <span>
+                <span className="block text-[13.5px]">{m.name}</span>
+                <span className="block text-xs text-muted">{money(m.balance)} balance due</span>
+              </span>
+            </Link>
+          ))}
+          {balanceDue.length === 0 && <div className="text-[13px] text-muted">Nothing needs attention right now.</div>}
+        </Card>
+
+        <Card className="flex flex-col gap-3.5 px-[22px] py-5">
+          <div className="flex items-center justify-between">
+            <h5 className="text-[15.5px] font-semibold">This week</h5>
+            <span className="text-[12.5px] text-muted">{sessionsThisWeek} sessions</span>
+          </div>
+          <div className="grid flex-1 grid-cols-7 items-end gap-2">
+            {weekOverview.map((d) => (
+              <Link key={d.label} href="/schedule" className="flex h-full flex-col items-center gap-2 text-fg hover:opacity-80">
+                <span className="flex-none text-[11.5px] tabular-nums text-muted">{d.count}</span>
+                <span className="flex min-h-0 w-full flex-1 items-end">
+                  <span
+                    className={`w-full flex-none rounded-t-lg rounded-b-[3px] ${isoOf(d.date) === isoOf(today) ? "bg-accent" : "bg-accent/30"}`}
+                    style={{ height: `${Math.max(4, Math.round((d.count / maxWeekCount) * 100))}%` }}
+                  />
                 </span>
+                <span className="flex-none text-[11.5px] text-muted">{d.label}</span>
               </Link>
             ))}
-            {balanceDue.length === 0 && <div className="text-[13px] text-muted">Nothing needs attention right now.</div>}
-          </Card>
-
-          <Card className="flex flex-1 flex-col gap-3.5 px-[22px] py-5">
-            <div className="flex items-center justify-between">
-              <h5 className="text-[15.5px] font-semibold">This week</h5>
-              <span className="text-[12.5px] text-muted">{sessionsThisWeek} sessions</span>
-            </div>
-            <div className="grid flex-1 grid-cols-7 items-end gap-2">
-              {weekOverview.map((d) => (
-                <Link key={d.label} href="/schedule" className="flex h-full flex-col items-center gap-2 text-fg hover:opacity-80">
-                  <span className="flex-none text-[11.5px] tabular-nums text-muted">{d.count}</span>
-                  <span className="flex min-h-0 w-full flex-1 items-end">
-                    <span
-                      className={`w-full flex-none rounded-t-lg rounded-b-[3px] ${isoOf(d.date) === isoOf(today) ? "bg-accent" : "bg-accent/30"}`}
-                      style={{ height: `${Math.max(4, Math.round((d.count / maxWeekCount) * 100))}%` }}
-                    />
-                  </span>
-                  <span className="flex-none text-[11.5px] text-muted">{d.label}</span>
-                </Link>
-              ))}
-            </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
 
         <Card className="flex flex-col gap-3 px-[22px] py-5">
           <div className="flex items-center justify-between">

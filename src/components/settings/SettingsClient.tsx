@@ -193,7 +193,7 @@ export function SettingsClient() {
             {(
               [
                 { key: "selfBook", label: "Members can self-book", hint: "Booking opens 14 days ahead in the member app" },
-                { key: "waitlist", label: "Waitlists on full sessions", hint: "Members are promoted automatically when a spot frees up" },
+                { key: "waitlist", label: "Waitlists on full sessions", hint: "Lets members line up for a full session — promoting someone when a spot opens is a manual staff action" },
                 { key: "requireCard", label: "Require card on file", hint: "Members must save a card before booking" },
               ] as const
             ).map((t) => (
