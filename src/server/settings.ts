@@ -17,7 +17,6 @@ export interface BusinessSettingsDTO {
   bookingFlags: { selfBook: boolean; waitlist: boolean; requireCard: boolean };
   currency: string;
   salesTax: string;
-  cardTerminal: string;
   /** Flat payroll rate for Bodpod / Class (and any custom session type) hours. */
   hourlyPayRate: number;
   paymentsFlags: { emailReceipt: boolean; autoCharge: boolean; packageAlert: boolean; dailySummary: boolean };
@@ -45,7 +44,6 @@ export async function getBusinessSettings(): Promise<BusinessSettingsDTO> {
     bookingFlags: row.bookingFlags as BusinessSettingsDTO["bookingFlags"],
     currency: row.currency,
     salesTax: row.salesTax,
-    cardTerminal: row.cardTerminal,
     hourlyPayRate: row.hourlyPayRate,
     paymentsFlags: row.paymentsFlags as BusinessSettingsDTO["paymentsFlags"],
     notifyFlags: row.notifyFlags as BusinessSettingsDTO["notifyFlags"],

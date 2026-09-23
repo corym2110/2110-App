@@ -15,7 +15,6 @@ export const DEFAULT_BUSINESS_SETTINGS: BusinessSettingsDTO = {
   bookingFlags: { selfBook: true, waitlist: true, requireCard: false },
   currency: "CAD",
   salesTax: "GST 5%",
-  cardTerminal: "Front desk terminal · connected",
   hourlyPayRate: 20,
   paymentsFlags: { emailReceipt: true, autoCharge: true, packageAlert: true, dailySummary: false },
   notifyFlags: { reminder: true, cancelNotice: true, waitlistOpen: true, birthday: false, marketing: false },

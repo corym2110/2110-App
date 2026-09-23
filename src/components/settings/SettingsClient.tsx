@@ -329,15 +329,6 @@ export function SettingsClient() {
               </label>
             </div>
             <label className="flex flex-col gap-1.5">
-              <span className="text-[11.5px] tracking-wider text-muted uppercase">Card terminal</span>
-              <Select
-                value={values.cardTerminal}
-                onChange={(v) => patch({ cardTerminal: v })}
-                options={["Front desk terminal · connected", "Mobile reader · connected"].map((v) => ({ value: v, label: v }))}
-                className="h-[38px] rounded-lg px-2 text-sm"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Payroll hourly rate (Bodpod / Class)</span>
               <input
                 type="number"
