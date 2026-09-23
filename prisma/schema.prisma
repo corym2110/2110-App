@@ -30,6 +30,7 @@ model Coach {
   series      RecurringSeries[]
   waiversWitnessed WaiverSignature[]
   sessionCredits   SessionCredit[]
+  products         Product[]
 }
 
 model TimeOff {
@@ -257,6 +258,27 @@ model SessionType {
   price     Float    @default(0)
   recurring Boolean  @default(true)
   createdAt DateTime @default(now())
+}
+
+/** POS catalog — every purchasable line item, price included. Per-coach Personal Training
+    products (e.g. "Personal Training – Chris" at her own rate) link to that coach by `coachId`
+    rather than parsing the coach's name out of the product name. `active: false` retires a
+    product from POS/Settings without breaking a historical Sale.lineItems reference to it. */
+model Product {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  category      String
+  price         Float    @default(0)
+  meta          String   @default("")
+  recur         String?
+  variablePrice Boolean  @default(false)
+  /** Which session type this maps to, for color-coding that matches the Schedule. Null for items
+      with no 1:1 session type (memberships, gift cards, apparel). */
+  sessionType   String?
+  coachId       String?
+  coach         Coach?   @relation(fields: [coachId], references: [id])
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
 }
 
 /** Single-row business-wide settings (Settings > Facility/Payments/Notifications). Always read/written

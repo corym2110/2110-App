@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState, useTransition } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
@@ -18,30 +18,40 @@ import { CardOnFileDialog } from "@/components/members/CardOnFileDialog";
 import { PREBILL_TYPES, type PreBillType } from "@/lib/prebill";
 import { getBusinessSettings } from "@/server/settings";
 import { parseTaxRate } from "@/lib/tax";
-import { CATALOG, matchProduct, coachForProduct } from "@/data/mock/catalog";
+import { matchProduct } from "@/lib/matchProduct";
+import { useProducts } from "@/lib/useProducts";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
 import { useThemeStore } from "@/stores/theme";
 import { money } from "@/lib/time";
-import type { Product } from "@/types";
+import { PRODUCT_CATEGORIES, type Product } from "@/types";
 
-const CATEGORIES: Product["category"][] = ["Personal Training", "Remote Coaching", "Memberships", "Assessments", "Other"];
+const CATEGORIES = PRODUCT_CATEGORIES;
 const PAYMENT_METHODS = ["Card", "Cash", "E-transfer", "Package credit"];
 
 function POSInner() {
   const router = useRouter();
   const params = useSearchParams();
   const initialMemberName = params.get("member") ? decodeURIComponent(params.get("member")!) : null;
+
+  const members = useMembers();
+  const coaches = useCoaches();
+  const products = useProducts();
+  const dark = useThemeStore((s) => s.theme === "dark");
+
   /** Seeds the cart from the URL — either one product via `type`/`coach`/`qty` (the single-session
       "Go to store" / "Bill this client" links), or several at once via repeated `item=type|coach|qty`
       params (a combined "Bill via POS" from the Upcoming cycle tally, when one coach bills on
-      behalf of more than one coach's sessions in the same checkout). */
+      behalf of more than one coach's sessions in the same checkout). `coach` here is a coach's
+      full name (baked into those links elsewhere), resolved to an id locally since matching is
+      now coachId-based. */
   const initialCart = useMemo(() => {
     const cart: Record<string, number> = {};
+    const coachIdByName = (name: string) => coaches.find((c) => c.name === name)?.id;
     const itemParams = params.getAll("item");
     if (itemParams.length > 0) {
       for (const raw of itemParams) {
         const [type, coach, qtyStr] = decodeURIComponent(raw).split("|");
-        const product = matchProduct(type, coach || undefined);
+        const product = matchProduct(type, coach ? coachIdByName(coach) : undefined, products);
         if (!product) continue;
         cart[product.id] = (cart[product.id] ?? 0) + Math.max(1, Number(qtyStr) || 1);
       }
@@ -50,18 +60,26 @@ function POSInner() {
     const type = params.get("type");
     if (!type) return cart;
     const coach = params.get("coach") ? decodeURIComponent(params.get("coach")!) : undefined;
-    const product = matchProduct(decodeURIComponent(type), coach);
+    const product = matchProduct(decodeURIComponent(type), coach ? coachIdByName(coach) : undefined, products);
     if (product) cart[product.id] = Math.max(1, Number(params.get("qty")) || 1);
     return cart;
-  }, [params]);
-
-  const members = useMembers();
-  const coaches = useCoaches();
-  const dark = useThemeStore((s) => s.theme === "dark");
+  }, [params, coaches, products]);
 
   const [category, setCategory] = useState<Product["category"]>("Personal Training");
   const [query, setQuery] = useState("");
-  const [cart, setCart] = useState<Record<string, number>>(initialCart);
+  const [cart, setCart] = useState<Record<string, number>>({});
+  // initialCart depends on `products` (DB-backed, loads async), so it isn't ready on the very
+  // first render the way it was when the catalog was a static import — apply it once products
+  // have actually loaded, instead of as the useState initializer (which only ever runs once, on
+  // mount, before that data exists).
+  const appliedInitialCart = useRef(false);
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      if (appliedInitialCart.current || products.length === 0) return;
+      appliedInitialCart.current = true;
+      if (Object.keys(initialCart).length > 0) setCart(initialCart);
+    });
+  }, [products, initialCart]);
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
   /** Selected member's id, or "" for Walk-in. null = not yet chosen, fall back to the ?member= query param once members load. */
@@ -132,7 +150,7 @@ function POSInner() {
     </HeaderButton>,
   );
 
-  const visible = CATALOG.filter((p) => {
+  const visible = products.filter((p) => {
     if (p.category !== category) return false;
     if (query.trim() && !p.name.toLowerCase().includes(query.trim().toLowerCase())) return false;
     return true;
@@ -144,7 +162,7 @@ function POSInner() {
     return p.variablePrice ? 0 : p.price;
   }
 
-  const lines = CATALOG.filter((p) => cart[p.id] > 0);
+  const lines = products.filter((p) => cart[p.id] > 0);
   const gross = lines.reduce((a, p) => a + unitPrice(p) * cart[p.id], 0);
   const discRaw = Math.max(0, Number(discValue) || 0);
   const discAmt = Math.min(gross, discMode === "%" ? gross * (Math.min(100, discRaw) / 100) : discRaw);
@@ -186,7 +204,7 @@ function POSInner() {
             sessionType: p.sessionType as PreBillType,
             unitPrice: unitPrice(p),
             quantity: cart[p.id],
-            coachId: coachForProduct(p, coaches) ?? memberCoachId,
+            coachId: p.coachId ?? memberCoachId,
           }));
         if (prebillItems.length > 0) await createSessionCreditsForSale(saleId, member, prebillItems);
       }

@@ -4,7 +4,8 @@ import { db } from "./db";
 import { getOccurrencesForRange } from "./schedule";
 import { getBusinessSettings } from "./settings";
 import { sessionTypeByName } from "@/data/mock/sessionTypes";
-import { matchProduct } from "@/data/mock/catalog";
+import { matchProduct } from "@/lib/matchProduct";
+import { getProducts } from "./products";
 import type { SessionTypeName } from "@/types";
 
 /** Personal Training / Group Training / Remote Consult / Blueprint and Baseline pay a
@@ -32,18 +33,17 @@ export interface CoachPayrollRow {
 }
 
 export async function getPayrollForPeriod(periodFrom: string, periodTo: string): Promise<CoachPayrollRow[]> {
-  const [byIso, coaches, settings] = await Promise.all([
+  const [byIso, coaches, settings, products] = await Promise.all([
     getOccurrencesForRange(periodFrom, periodTo),
     db.coach.findMany({ orderBy: { name: "asc" } }),
     getBusinessSettings(),
+    getProducts(),
   ]);
 
-  const coachNameById = new Map(coaches.map((c) => [c.id, c.name]));
-
   /** Real price for this session — same catalog-first resolution as billing.ts's priceFor,
-      duplicated here since that one's a private closure over billing.ts's own coach-name map. */
+      duplicated here since that one's a private closure over billing.ts's own coach map. */
   function priceFor(type: SessionTypeName, teachingCoachId: string): number {
-    return matchProduct(type, coachNameById.get(teachingCoachId))?.price ?? sessionTypeByName(type).price;
+    return matchProduct(type, teachingCoachId, products)?.price ?? sessionTypeByName(type).price;
   }
 
   // coachId -> type -> accumulator

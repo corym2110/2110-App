@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getOccurrencesForRange } from "./schedule";
 import { sessionTypeByName } from "@/data/mock/sessionTypes";
-import { matchProduct } from "@/data/mock/catalog";
+import { matchProduct } from "@/lib/matchProduct";
+import { getProducts } from "./products";
 import { PREBILL_TYPES, type PreBillType } from "@/lib/prebill";
 import { addDays, isoOf } from "@/lib/time";
 
@@ -62,11 +63,12 @@ export interface BillableMemberRow {
     clients who are also trained by someone else this period, even though the tally rows
     themselves stay scoped to `coachId`. */
 export async function getBillableTally(periodFrom: string, periodTo: string, coachId?: string): Promise<BillableMemberRow[]> {
-  const [byIso, members, coaches, existingCredits] = await Promise.all([
+  const [byIso, members, coaches, existingCredits, products] = await Promise.all([
     getOccurrencesForRange(periodFrom, periodTo),
     db.member.findMany({ include: { coach: true } }),
     db.coach.findMany({ select: { id: true, name: true } }),
     db.sessionCredit.findMany({ where: { appliedIso: { gte: periodFrom, lte: periodTo } }, select: { appliedOccurrenceKey: true, memberId: true } }),
+    getProducts(),
   ]);
 
   const covered = new Set(existingCredits.filter((c) => c.appliedOccurrenceKey).map((c) => `${c.appliedOccurrenceKey}::${c.memberId}`));
@@ -81,7 +83,7 @@ export async function getBillableTally(periodFrom: string, periodTo: string, coa
       "Personal Training – Cory" at $115, not the generic $50 session-type default), resolved by
       the coach who actually teaches the occurrence. */
   function priceFor(type: PreBillType, teachingCoachId: string): number {
-    return matchProduct(type, coachNameById.get(teachingCoachId))?.price ?? sessionTypeByName(type).price;
+    return matchProduct(type, teachingCoachId, products)?.price ?? sessionTypeByName(type).price;
   }
 
   function pushInto(items: BillableItem[], type: PreBillType, key: string, iso: string, start: number, teachingCoachId: string) {

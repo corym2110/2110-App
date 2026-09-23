@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { Toggle } from "@/components/ui/Toggle";
 import { HeaderButton } from "@/components/ui/HeaderButton";
-import { PlusIcon, XIcon } from "@/components/ui/icons";
+import { PlusIcon, XIcon, PencilIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useCoachesWithRefetch } from "@/lib/useCoaches";
@@ -14,20 +14,25 @@ import { AddSessionTypeDialog } from "@/components/settings/AddSessionTypeDialog
 import { initialsOf } from "@/lib/time";
 import { sessionTypeColor } from "@/data/mock/sessionTypes";
 import { useSessionTypesWithRefetch } from "@/lib/useSessionTypes";
-import { matchProduct } from "@/data/mock/catalog";
+import { matchProduct } from "@/lib/matchProduct";
+import { useProductsWithRefetch } from "@/lib/useProducts";
+import { deactivateProduct } from "@/server/products";
+import { ProductDialog } from "@/components/settings/ProductDialog";
 import { useThemeStore } from "@/stores/theme";
 import { useBusinessSettings, DEFAULT_BUSINESS_SETTINGS } from "@/lib/useBusinessSettings";
 import { saveBusinessSettings, type BusinessSettingsDTO } from "@/server/settings";
 import { CANCELLATION_POLICY, REFUND_POLICY, PRIVACY_POLICY } from "@/data/policies/policies";
 import type { WaiverBlock } from "@/data/waivers/adultLiabilityWaiver";
+import type { Product } from "@/types";
 
-type Tab = "Facility" | "Staff" | "Services" | "Payments" | "Notifications" | "Policies";
+type Tab = "Facility" | "Staff" | "Services" | "Products" | "Payments" | "Notifications" | "Policies";
 
 const TAB_LABELS: Record<Tab, string> = {
   Facility: "Business details, hours and booking rules",
   Staff: "Coaches and admin access",
   Services: "Session types, lengths and pricing",
-  Payments: "Tax, terminals and receipts",
+  Products: "The POS catalog — everything sellable and its price",
+  Payments: "Tax and receipts",
   Notifications: "Member reminders and internal alerts",
   Policies: "Cancellation, refund and privacy policies for reference",
 };
@@ -66,6 +71,9 @@ export function SettingsClient() {
   const [, startSavingRate] = useTransition();
   const { sessionTypes, refetch: refetchSessionTypes } = useSessionTypesWithRefetch();
   const [addSessionTypeOpen, setAddSessionTypeOpen] = useState(false);
+  const { products, refetch: refetchProducts } = useProductsWithRefetch();
+  const [productDialog, setProductDialog] = useState<{ editing?: Product } | null>(null);
+  const [, startProductAction] = useTransition();
 
   function saveChanges() {
     startSaving(async () => {
@@ -277,7 +285,7 @@ export function SettingsClient() {
             <span>Capacity</span>
           </div>
           {sessionTypes.map((t) => {
-            const product = matchProduct(t.name);
+            const product = matchProduct(t.name, undefined, products);
             const price = product?.price ?? t.price;
             return (
               <div key={t.name} className="grid grid-cols-[minmax(0,1.5fr)_108px_116px_minmax(0,1fr)] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0">
@@ -304,6 +312,66 @@ export function SettingsClient() {
         </Card>
       )}
       {addSessionTypeOpen && <AddSessionTypeDialog onClose={() => setAddSessionTypeOpen(false)} onAdded={refetchSessionTypes} />}
+
+      {tab === "Products" && (
+        <Card className="overflow-hidden py-1.5">
+          <div className="grid grid-cols-[minmax(0,1.5fr)_128px_100px_minmax(0,1fr)_140px] gap-3.5 border-b border-divider px-[22px] py-3 text-[11px] tracking-wider text-muted uppercase">
+            <span>Product</span>
+            <span>Category</span>
+            <span className="text-right">Price</span>
+            <span>Coach</span>
+            <span></span>
+          </div>
+          {products.map((p) => (
+            <div
+              key={p.id}
+              className="grid grid-cols-[minmax(0,1.5fr)_128px_100px_minmax(0,1fr)_140px] items-center gap-3.5 border-b border-divider px-[22px] py-3.5 last:border-b-0"
+            >
+              <span className="min-w-0 truncate text-sm">{p.name}</span>
+              <span className="text-[13.5px] text-muted">{p.category}</span>
+              <span className="text-right text-[13.5px] font-medium tabular-nums">
+                {p.variablePrice ? "Variable" : `$${p.price.toFixed(2)}`}
+              </span>
+              <span className="min-w-0 truncate text-[13.5px] text-muted">{coaches.find((c) => c.id === p.coachId)?.name ?? "—"}</span>
+              <span className="flex items-center justify-end gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setProductDialog({ editing: p })}
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-row hover:text-fg"
+                >
+                  <PencilIcon size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => startProductAction(async () => { await deactivateProduct(p.id); refetchProducts(); })}
+                  className="rounded-lg px-2 py-1 text-[12.5px] text-muted hover:bg-row hover:text-bad"
+                >
+                  Retire
+                </button>
+              </span>
+            </div>
+          ))}
+          {products.length === 0 && <div className="px-[22px] py-6 text-[13.5px] text-muted">No products yet.</div>}
+          <div className="px-[22px] py-3.5">
+            <button
+              type="button"
+              onClick={() => setProductDialog({})}
+              className="flex h-9 items-center gap-1.5 rounded-full border border-divider px-4 text-[13.5px] hover:bg-row"
+            >
+              <PlusIcon size={14} />
+              Add product
+            </button>
+          </div>
+        </Card>
+      )}
+      {productDialog && (
+        <ProductDialog
+          editing={productDialog.editing}
+          coaches={coaches}
+          onClose={() => setProductDialog(null)}
+          onSaved={refetchProducts}
+        />
+      )}
 
       {tab === "Payments" && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(340px,1fr))] gap-[18px]">

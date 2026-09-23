@@ -76,16 +76,20 @@ export interface Member {
 export type AttendanceStatus = "Checked in" | "No-show" | "Late cancel" | "Cancelled";
 export type FeeDecision = "charged" | "waived";
 
+export const PRODUCT_CATEGORIES = ["Personal Training", "Remote Coaching", "Memberships", "Assessments", "Other"] as const;
+
 export interface Product {
   id: string;
   name: string;
-  category: "Personal Training" | "Remote Coaching" | "Memberships" | "Assessments" | "Other";
+  category: (typeof PRODUCT_CATEGORIES)[number];
   price: number;
   meta: string;
   recur?: string;
   variablePrice?: boolean;
   /** Which service this maps to, for color-coding that matches the Schedule. Omit for items with no 1:1 session type (memberships, gift cards, apparel). */
   sessionType?: SessionTypeName;
+  /** Which coach's rate this is, for per-coach Personal Training products. Omit for coach-agnostic items. */
+  coachId?: string;
 }
 
 export interface CartLine {
