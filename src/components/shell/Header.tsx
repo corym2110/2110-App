@@ -4,13 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useUIStore } from "@/stores/ui";
 import { useThemeStore } from "@/stores/theme";
-import { useNotificationsStore } from "@/stores/notifications";
 import { useHeaderActionStore } from "@/stores/headerAction";
-import { NOTIFICATIONS } from "@/data/mock/notifications";
 import { searchHits } from "@/lib/search";
 import { useMembers } from "@/lib/useMembers";
 import {
-  BellIcon,
   MoonIcon,
   PanelToggleIcon,
   SearchIcon,
@@ -23,13 +20,10 @@ export function Header() {
   const toggleCollapsed = useUIStore((s) => s.toggleCollapsed);
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggle);
-  const read = useNotificationsStore((s) => s.read);
-  const markAllRead = useNotificationsStore((s) => s.markAllRead);
   const headerAction = useHeaderActionStore((s) => s.node);
 
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [notifOpen, setNotifOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const members = useMembers();
 
@@ -37,13 +31,11 @@ export function Header() {
     function onMouseDown(ev: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(ev.target as Node)) {
         setSearchOpen(false);
-        setNotifOpen(false);
       }
     }
     function onKey(ev: KeyboardEvent) {
       if (ev.key === "Escape") {
         setSearchOpen(false);
-        setNotifOpen(false);
       }
     }
     document.addEventListener("mousedown", onMouseDown);
@@ -55,7 +47,6 @@ export function Header() {
   }, []);
 
   const hits = searchHits(query, members);
-  const unread = NOTIFICATIONS.filter((n) => !read[n.id]).length;
 
   return (
     <header
@@ -136,64 +127,6 @@ export function Header() {
           <span className="grid h-4 w-4 place-items-center">{theme === "dark" ? <MoonIcon size={16} /> : <SunIcon size={16} />}</span>
           {theme === "dark" ? "Dark" : "Light"}
         </button>
-
-        <div className="relative flex-none">
-          <button
-            type="button"
-            onClick={() => setNotifOpen((o) => !o)}
-            title="Notifications"
-            className={`relative grid h-9 w-9 place-items-center rounded-full border hover:bg-row hover:text-fg ${
-              notifOpen ? "border-accent bg-row text-fg" : "border-divider text-muted"
-            }`}
-          >
-            <BellIcon size={17} />
-            {unread > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-bad px-1 text-[10px] font-semibold text-white">
-                {unread}
-              </span>
-            )}
-          </button>
-          {notifOpen && (
-            <div className="popover-shadow absolute right-0 top-11 z-[60] w-[344px] max-w-[calc(100vw-40px)] overflow-hidden rounded-2xl bg-surface">
-              <div className="flex items-center justify-between gap-3 border-b border-divider px-4 py-3.5">
-                <span className="text-[14.5px] font-semibold">Notifications</span>
-                <button
-                  type="button"
-                  onClick={() => markAllRead(NOTIFICATIONS.map((n) => n.id))}
-                  className="text-[12.5px] text-muted hover:text-fg"
-                >
-                  Mark all read
-                </button>
-              </div>
-              <div className="max-h-[390px] overflow-y-auto">
-                {NOTIFICATIONS.map((n) => {
-                  const isRead = !!read[n.id];
-                  return (
-                    <Link
-                      key={n.id}
-                      href={`/members/${n.memberName.toLowerCase().replace(/\s+/g, "-")}`}
-                      className={`flex gap-2.5 border-b border-divider px-4 py-3.5 text-fg hover:bg-row ${
-                        isRead ? "" : "bg-accent/5"
-                      }`}
-                    >
-                      <span className="grid h-7 w-7 flex-none place-items-center rounded-full bg-row text-[11px] font-semibold text-muted">
-                        {n.initials}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[13.5px] text-pretty">{n.text}</span>
-                        <span className="mt-px block text-xs text-muted">{n.when}</span>
-                      </span>
-                      {!isRead && <span className="mt-1.5 h-[7px] w-[7px] flex-none rounded-full bg-accent" />}
-                    </Link>
-                  );
-                })}
-              </div>
-              <Link href="/preferences" className="block px-4 py-3 text-center text-[12.5px] text-link hover:text-link-hover">
-                Notification settings
-              </Link>
-            </div>
-          )}
-        </div>
 
         {headerAction}
       </div>
