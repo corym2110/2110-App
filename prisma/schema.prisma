@@ -30,23 +30,6 @@ model Coach {
   series      RecurringSeries[]
   waiversWitnessed WaiverSignature[]
   sessionCredits   SessionCredit[]
-  notifications    Notification[]
-}
-
-/** A real event notification for a coach's bell — new manual booking, a class join, a
-    cancellation, or a waitlist spot opening. Only ever created if the relevant
-    notifyFlags/BusinessSettings toggle is on for the recipient (see src/server/notifications.ts). */
-model Notification {
-  id        String   @id @default(cuid())
-  type      String   // "booking" | "classJoin" | "cancelled" | "waitlistOpen"
-  text      String
-  memberId  String?
-  coachId   String?
-  coach     Coach?   @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  @@index([coachId])
 }
 
 model TimeOff {

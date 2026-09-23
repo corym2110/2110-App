@@ -4,12 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useUIStore } from "@/stores/ui";
 import { useThemeStore } from "@/stores/theme";
+import { useNotificationsStore } from "@/stores/notifications";
 import { useHeaderActionStore } from "@/stores/headerAction";
-import { getNotificationsForCoach, markAllNotificationsRead, type NotificationRow } from "@/server/notifications";
-import { useCurrentCoach } from "@/lib/useCoaches";
+import { NOTIFICATIONS } from "@/data/mock/notifications";
 import { searchHits } from "@/lib/search";
 import { useMembers } from "@/lib/useMembers";
-import { formatDateTime } from "@/lib/time";
 import {
   BellIcon,
   MoonIcon,
@@ -19,33 +18,20 @@ import {
   XIcon,
 } from "@/components/ui/icons";
 
-const TYPE_INITIALS: Record<string, string> = {
-  booking: "BK",
-  classJoin: "CJ",
-  cancelled: "CX",
-  waitlistOpen: "WL",
-};
-
 export function Header() {
   const collapsed = useUIStore((s) => s.collapsed);
   const toggleCollapsed = useUIStore((s) => s.toggleCollapsed);
   const theme = useThemeStore((s) => s.theme);
   const toggleTheme = useThemeStore((s) => s.toggle);
+  const read = useNotificationsStore((s) => s.read);
+  const markAllRead = useNotificationsStore((s) => s.markAllRead);
   const headerAction = useHeaderActionStore((s) => s.node);
-  const coach = useCurrentCoach();
 
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const rootRef = useRef<HTMLDivElement>(null);
   const members = useMembers();
-
-  const coachId = coach?.id;
-  function refetchNotifications() {
-    if (coachId) getNotificationsForCoach(coachId).then(setNotifications);
-  }
-  useEffect(refetchNotifications, [coachId]);
 
   useEffect(() => {
     function onMouseDown(ev: MouseEvent) {
@@ -69,7 +55,7 @@ export function Header() {
   }, []);
 
   const hits = searchHits(query, members);
-  const unread = notifications.filter((n) => !n.read).length;
+  const unread = NOTIFICATIONS.filter((n) => !read[n.id]).length;
 
   return (
     <header
@@ -154,10 +140,7 @@ export function Header() {
         <div className="relative flex-none">
           <button
             type="button"
-            onClick={() => {
-              setNotifOpen((o) => !o);
-              refetchNotifications();
-            }}
+            onClick={() => setNotifOpen((o) => !o)}
             title="Notifications"
             className={`relative grid h-9 w-9 place-items-center rounded-full border hover:bg-row hover:text-fg ${
               notifOpen ? "border-accent bg-row text-fg" : "border-divider text-muted"
@@ -176,42 +159,34 @@ export function Header() {
                 <span className="text-[14.5px] font-semibold">Notifications</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!coach) return;
-                    setNotifications((rows) => rows.map((r) => ({ ...r, read: true })));
-                    markAllNotificationsRead(coach.id);
-                  }}
+                  onClick={() => markAllRead(NOTIFICATIONS.map((n) => n.id))}
                   className="text-[12.5px] text-muted hover:text-fg"
                 >
                   Mark all read
                 </button>
               </div>
               <div className="max-h-[390px] overflow-y-auto">
-                {notifications.map((n) => {
-                  const body = (
-                    <>
+                {NOTIFICATIONS.map((n) => {
+                  const isRead = !!read[n.id];
+                  return (
+                    <Link
+                      key={n.id}
+                      href={`/members/${n.memberName.toLowerCase().replace(/\s+/g, "-")}`}
+                      className={`flex gap-2.5 border-b border-divider px-4 py-3.5 text-fg hover:bg-row ${
+                        isRead ? "" : "bg-accent/5"
+                      }`}
+                    >
                       <span className="grid h-7 w-7 flex-none place-items-center rounded-full bg-row text-[11px] font-semibold text-muted">
-                        {TYPE_INITIALS[n.type] ?? "•"}
+                        {n.initials}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-[13.5px] text-pretty">{n.text}</span>
-                        <span className="mt-px block text-xs text-muted">{formatDateTime(new Date(n.createdAt))}</span>
+                        <span className="mt-px block text-xs text-muted">{n.when}</span>
                       </span>
-                      {!n.read && <span className="mt-1.5 h-[7px] w-[7px] flex-none rounded-full bg-accent" />}
-                    </>
-                  );
-                  const rowClass = `flex gap-2.5 border-b border-divider px-4 py-3.5 text-fg hover:bg-row ${n.read ? "" : "bg-accent/5"}`;
-                  return n.memberId ? (
-                    <Link key={n.id} href={`/members/${n.memberId}`} className={rowClass}>
-                      {body}
+                      {!isRead && <span className="mt-1.5 h-[7px] w-[7px] flex-none rounded-full bg-accent" />}
                     </Link>
-                  ) : (
-                    <div key={n.id} className={rowClass}>
-                      {body}
-                    </div>
                   );
                 })}
-                {notifications.length === 0 && <div className="px-4 py-8 text-center text-[13px] text-muted">No notifications yet.</div>}
               </div>
               <Link href="/preferences" className="block px-4 py-3 text-center text-[12.5px] text-link hover:text-link-hover">
                 Notification settings
