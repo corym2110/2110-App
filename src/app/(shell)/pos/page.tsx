@@ -13,6 +13,8 @@ import { useCoaches } from "@/lib/useCoaches";
 import { getSharedAccountLinks, type SharedAccountLink } from "@/server/members";
 import { createSale } from "@/server/sales";
 import { createSessionCreditsForSale } from "@/server/billing";
+import { chargeCardOnFile, getCardOnFile, type CloverCard } from "@/server/clover";
+import { CardOnFileDialog } from "@/components/members/CardOnFileDialog";
 import { PREBILL_TYPES, type PreBillType } from "@/lib/prebill";
 import { getBusinessSettings } from "@/server/settings";
 import { parseTaxRate } from "@/lib/tax";
@@ -73,6 +75,8 @@ function POSInner() {
   const [saleError, setSaleError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [taxRate, setTaxRate] = useState(0.05);
+  const [cardOnFile, setCardOnFile] = useState<CloverCard | null | undefined>(undefined);
+  const [cardDialogOpen, setCardDialogOpen] = useState(false);
 
   useEffect(() => {
     getBusinessSettings().then((s) => setTaxRate(parseTaxRate(s.salesTax)));
@@ -99,6 +103,16 @@ function POSInner() {
     return () => {
       cancelled = true;
     };
+  }, [member]);
+
+  function refetchCardOnFile() {
+    if (member) getCardOnFile(member).then(setCardOnFile);
+  }
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      setCardOnFile(undefined);
+      if (member) getCardOnFile(member).then(setCardOnFile);
+    });
   }, [member]);
 
   const selectedMember = member ? members.find((m) => m.id === member) : undefined;
@@ -138,6 +152,57 @@ function POSInner() {
   const tax = subtotal * taxRate;
   const total = subtotal + tax;
   const needsAmount = lines.some((p) => p.variablePrice && !unitPrice(p));
+  const wantsCardCharge = method === "Card" && !invoiceUnpaid;
+
+  async function runCharge() {
+    let chargedButUnrecorded = false;
+    if (wantsCardCharge && member) {
+      const result = await chargeCardOnFile(member, Math.round(total * 100), "CAD");
+      if (!result.ok) {
+        setSaleError(result.error ?? "Card was declined.");
+        return;
+      }
+      chargedButUnrecorded = true;
+    }
+    const summary = lines.map((p) => (cart[p.id] > 1 ? `${p.name} x${cart[p.id]}` : p.name)).join(", ");
+    const lineItems = lines.map((p) => ({ description: p.name, quantity: cart[p.id], unitPrice: unitPrice(p) }));
+    if (discAmt > 0) lineItems.push({ description: "Discount", quantity: 1, unitPrice: -discAmt });
+    try {
+      const saleId = await createSale({
+        memberId: member || undefined,
+        coachId: memberCoachId,
+        summary,
+        total,
+        method: invoiceUnpaid ? "Invoice" : method,
+        paid: !invoiceUnpaid,
+        lineItems,
+        taxRate,
+      });
+      chargedButUnrecorded = false;
+      if (member) {
+        const prebillItems = lines
+          .filter((p) => p.sessionType && (PREBILL_TYPES as readonly string[]).includes(p.sessionType))
+          .map((p) => ({
+            sessionType: p.sessionType as PreBillType,
+            unitPrice: unitPrice(p),
+            quantity: cart[p.id],
+            coachId: coachForProduct(p, coaches) ?? memberCoachId,
+          }));
+        if (prebillItems.length > 0) await createSessionCreditsForSale(saleId, member, prebillItems);
+      }
+      setCart({});
+      router.push(`/invoices/${saleId}`);
+    } catch {
+      // The card charge above can succeed and then this step still fail (network blip, etc.) -
+      // that's a real charge with nothing recorded, so this must never read as "try again" and
+      // invite a second charge for the same sale.
+      setSaleError(
+        chargedButUnrecorded
+          ? `${memberName}'s card was charged ${money(total)} but the sale failed to save. Don't charge again — record this manually and check Clover's dashboard for the charge.`
+          : "Couldn't record that sale. Try again.",
+      );
+    }
+  }
 
   return (
     <div className="flex flex-col gap-[18px]">
@@ -379,6 +444,12 @@ function POSInner() {
                 </button>
               ))}
             </div>
+            {wantsCardCharge && !member && (
+              <div className="mt-1.5 text-[12px] text-bad">Select a member to charge a card.</div>
+            )}
+            {wantsCardCharge && member && cardOnFile === null && (
+              <div className="mt-1.5 text-[12px] text-accent">No card on file for {memberName} — add one to charge.</div>
+            )}
           </div>
 
           {member && (
@@ -392,41 +463,14 @@ function POSInner() {
 
           <button
             type="button"
-            disabled={lines.length === 0 || needsAmount || isPending}
+            disabled={lines.length === 0 || needsAmount || isPending || (wantsCardCharge && !member)}
             onClick={() => {
               setSaleError(null);
-              const summary = lines.map((p) => (cart[p.id] > 1 ? `${p.name} x${cart[p.id]}` : p.name)).join(", ");
-              const lineItems = lines.map((p) => ({ description: p.name, quantity: cart[p.id], unitPrice: unitPrice(p) }));
-              if (discAmt > 0) lineItems.push({ description: "Discount", quantity: 1, unitPrice: -discAmt });
-              startTransition(async () => {
-                try {
-                  const saleId = await createSale({
-                    memberId: member || undefined,
-                    coachId: memberCoachId,
-                    summary,
-                    total,
-                    method: invoiceUnpaid ? "Invoice" : method,
-                    paid: !invoiceUnpaid,
-                    lineItems,
-                    taxRate,
-                  });
-                  if (member) {
-                    const prebillItems = lines
-                      .filter((p) => p.sessionType && (PREBILL_TYPES as readonly string[]).includes(p.sessionType))
-                      .map((p) => ({
-                        sessionType: p.sessionType as PreBillType,
-                        unitPrice: unitPrice(p),
-                        quantity: cart[p.id],
-                        coachId: coachForProduct(p, coaches) ?? memberCoachId,
-                      }));
-                    if (prebillItems.length > 0) await createSessionCreditsForSale(saleId, member, prebillItems);
-                  }
-                  setCart({});
-                  router.push(`/invoices/${saleId}`);
-                } catch {
-                  setSaleError("Couldn't record that sale. Try again.");
-                }
-              });
+              if (wantsCardCharge && member && cardOnFile === null) {
+                setCardDialogOpen(true);
+                return;
+              }
+              startTransition(runCharge);
             }}
             className="h-11 rounded-full bg-accent text-[14.5px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-45"
           >
@@ -434,6 +478,19 @@ function POSInner() {
           </button>
         </aside>
       </div>
+
+      {cardDialogOpen && member && (
+        <CardOnFileDialog
+          memberId={member}
+          memberName={memberName}
+          onClose={() => setCardDialogOpen(false)}
+          onSaved={() => {
+            refetchCardOnFile();
+            setCardDialogOpen(false);
+            startTransition(runCharge);
+          }}
+        />
+      )}
     </div>
   );
 }
