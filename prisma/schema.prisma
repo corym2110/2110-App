@@ -276,7 +276,6 @@ model BusinessSettings {
   currency         String   @default("CAD")
   salesTax         String   @default("GST 5%")
   cardTerminal     String   @default("Front desk terminal · connected")
-  lateCancelFee    String   @default("$25.00")
   /** Flat payroll rate for Bodpod / Class (and any custom session type) hours. */
   hourlyPayRate    Float    @default(20)
   /** { emailReceipt, autoCharge, packageAlert, dailySummary } */

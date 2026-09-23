@@ -338,14 +338,6 @@ export function SettingsClient() {
               />
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-[11.5px] tracking-wider text-muted uppercase">Late cancellation fee</span>
-              <input
-                value={values.lateCancelFee}
-                onChange={(e) => patch({ lateCancelFee: e.target.value })}
-                className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
-              />
-            </label>
-            <label className="flex flex-col gap-1.5">
               <span className="text-[11.5px] tracking-wider text-muted uppercase">Payroll hourly rate (Bodpod / Class)</span>
               <input
                 type="number"
