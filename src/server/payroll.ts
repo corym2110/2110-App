@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "./db";
+import { getCurrentCoach } from "./coaches";
 import { getOccurrencesForRange } from "./schedule";
 import { getBusinessSettings } from "./settings";
 import { sessionTypeByName } from "@/data/mock/sessionTypes";
@@ -32,7 +33,13 @@ export interface CoachPayrollRow {
   items: PayrollLineItem[];
 }
 
+/** Admin-only: the settings page already redirects non-admins away, but that's a UI convenience,
+    not a security boundary — this is a real Server Action, callable directly by any signed-in
+    coach regardless of which page invoked it, so the check has to live here too. */
 export async function getPayrollForPeriod(periodFrom: string, periodTo: string): Promise<CoachPayrollRow[]> {
+  const requester = await getCurrentCoach();
+  if (!requester?.isAdmin) throw new Error("Only an admin can view payroll.");
+
   const [byIso, coaches, settings, products] = await Promise.all([
     getOccurrencesForRange(periodFrom, periodTo),
     db.coach.findMany({ orderBy: { name: "asc" } }),

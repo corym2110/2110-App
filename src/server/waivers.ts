@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
+import { getCurrentCoach } from "./coaches";
 import { ADULT_LIABILITY_WAIVER, ADULT_LIABILITY_WAIVER_VERSION, type WaiverBlock } from "@/data/waivers/adultLiabilityWaiver";
 import { YOUTH_WAIVER, YOUTH_WAIVER_VERSION } from "@/data/waivers/youthWaiver";
 
@@ -72,7 +73,15 @@ export interface WaiverDetail {
   signedByCoach: string | null;
 }
 
+/** Waiver content (health-adjacent liability details, a signature image) is sensitive enough to
+    require an explicit signed-in-coach check inside the action itself, not just reliance on
+    whatever page happened to invoke it — staff legitimately share visibility across all members
+    at this single-facility scale, so this isn't a per-coach ownership check, just a real auth
+    gate instead of an incidental one. */
 export async function getWaiverSignature(id: string): Promise<WaiverDetail | null> {
+  const requester = await getCurrentCoach();
+  if (!requester) throw new Error("Not authenticated.");
+
   const row = await db.waiverSignature.findUnique({ where: { id }, include: { member: true, signedByCoach: true } });
   if (!row) return null;
   return {

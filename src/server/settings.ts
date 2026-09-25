@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
+import { getCurrentCoach } from "./coaches";
 
 const SINGLETON_ID = "singleton";
 
@@ -53,7 +54,12 @@ export async function getBusinessSettings(): Promise<BusinessSettingsDTO> {
   };
 }
 
+/** Admin-only: same reasoning as getPayrollForPeriod — the Settings page redirects non-admins,
+    but that's a UI convenience, not a security boundary for this Server Action itself. */
 export async function saveBusinessSettings(input: BusinessSettingsDTO): Promise<void> {
+  const requester = await getCurrentCoach();
+  if (!requester?.isAdmin) throw new Error("Only an admin can change business settings.");
+
   const data = { ...input, bookingFlags: input.bookingFlags as object, paymentsFlags: input.paymentsFlags as object, notifyFlags: input.notifyFlags as object };
   await db.businessSettings.upsert({
     where: { id: SINGLETON_ID },
