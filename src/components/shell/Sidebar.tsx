@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { UserButton, useUser } from "@clerk/nextjs";
 import { useUIStore } from "@/stores/ui";
 import { useCurrentCoach } from "@/lib/useCoaches";
+import { canViewFinancials } from "@/lib/roles";
 import {
   DashboardIcon,
   ScheduleIcon,
@@ -78,7 +79,7 @@ export function Sidebar() {
             {!collapsed && <span className="whitespace-nowrap">Upcoming cycle</span>}
           </Link>
         )}
-        {coach?.isAdmin && (
+        {coach && canViewFinancials(coach.role) && (
           <Link
             href="/payroll"
             className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm overflow-hidden ${
@@ -109,7 +110,7 @@ export function Sidebar() {
           {!collapsed && (
             <Link href="/preferences" className="min-w-0 hover:opacity-80">
               <div className="truncate text-[13.5px] font-medium">{displayName}</div>
-              <div className="text-[11.5px] text-white/55">{coach ? (coach.isAdmin ? "Admin" : "Coach") : "Coach"}</div>
+              <div className="text-[11.5px] text-white/55">{coach?.role ?? "Coach"}</div>
             </Link>
           )}
         </div>

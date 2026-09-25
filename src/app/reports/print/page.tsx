@@ -3,6 +3,7 @@ import { getCurrentCoach } from "@/server/coaches";
 import { getRealReportsSummary, type ReportRangeKey } from "@/server/sales";
 import { getBusinessSettings } from "@/server/settings";
 import { getMembers } from "@/server/members";
+import { canViewFinancials } from "@/lib/roles";
 import { moneyRounded, money, formatDateLong } from "@/lib/time";
 import { PrintButton } from "@/components/invoices/InvoiceActions";
 
@@ -24,16 +25,16 @@ export default async function ReportsPrintPage({ searchParams }: { searchParams:
   if (!coach) {
     return <div className="px-5 py-16 text-center text-[13.5px] text-muted">You need a linked coach account to view this report.</div>;
   }
-  const isAdmin = coach.isAdmin;
+  const canSeeAll = canViewFinancials(coach.role);
 
   const [summary, settings, members] = await Promise.all([
-    getRealReportsSummary(range, isAdmin ? undefined : coach.id),
+    getRealReportsSummary(range, canSeeAll ? undefined : coach.id),
     getBusinessSettings(),
     getMembers(),
   ]);
 
   const followUp = members
-    .filter((m) => m.balance > 0 && (isAdmin || m.coach === coach.name))
+    .filter((m) => m.balance > 0 && (canSeeAll || m.coach === coach.name))
     .sort((a, b) => b.balance - a.balance)
     .slice(0, 10);
 
@@ -78,7 +79,7 @@ export default async function ReportsPrintPage({ searchParams }: { searchParams:
               <div className="text-[13px] text-muted">{settings.phone}</div>
             </div>
             <div className="text-right">
-              <div className="text-[26px] font-semibold tracking-tight">{isAdmin ? "Business report" : "My revenue"}</div>
+              <div className="text-[26px] font-semibold tracking-tight">{canSeeAll ? "Business report" : "My revenue"}</div>
               <div className="mt-1 text-[12.5px] text-muted">{RANGE_LABEL[range]}</div>
               <div className="text-[12.5px] tabular-nums text-muted">Generated {formatDateLong(new Date())}</div>
             </div>
@@ -139,7 +140,7 @@ export default async function ReportsPrintPage({ searchParams }: { searchParams:
             ))}
           </div>
 
-          {isAdmin && (
+          {canSeeAll && (
             <div className="mt-7 border-t border-divider pt-5">
               <h5 className="mb-3 text-[14.5px] font-semibold">Coach revenue</h5>
               {summary.coachShare.length === 0 && <div className="py-3 text-[13px] text-muted">No coach-attributed sales yet.</div>}

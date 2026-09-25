@@ -231,7 +231,7 @@ export function SettingsClient() {
                 <span className="min-w-0 flex-1">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-[14.5px] font-medium">{c.name}</span>
-                    {c.isAdmin && <span className="flex-none rounded-full bg-accent/15 px-2 py-0.5 text-[10.5px] font-semibold text-accent">Admin</span>}
+                    {c.role !== "Coach" && <span className="flex-none rounded-full bg-accent/15 px-2 py-0.5 text-[10.5px] font-semibold text-accent">{c.role}</span>}
                   </span>
                   <span className="block truncate text-xs text-muted">{c.email}</span>
                 </span>

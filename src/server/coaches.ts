@@ -4,6 +4,7 @@ import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { db } from "./db";
+import { COACH_ROLES, type CoachRole } from "@/lib/roles";
 
 export interface CoachRow {
   id: string;
@@ -54,7 +55,7 @@ export async function getCurrentCoach(): Promise<CoachRow | null> {
 export interface NewCoachInput {
   name: string;
   email: string;
-  isAdmin?: boolean;
+  role: CoachRole;
 }
 
 /** Absolute origin of the request (works in dev, previews, and prod) so the invite email links back here. */
@@ -72,6 +73,8 @@ export async function addCoach(input: NewCoachInput): Promise<string> {
   const name = input.name.trim();
   const email = input.email.trim();
   if (!name || !email) throw new Error("Name and email are required.");
+  if (!COACH_ROLES.includes(input.role)) throw new Error("Invalid role.");
+  const isAdmin = input.role !== "Coach";
 
   // Send the invite first — if Clerk rejects it (bad address, already invited), nothing is
   // written to our own database, so a failed invite never leaves an orphaned coach record.
@@ -79,10 +82,10 @@ export async function addCoach(input: NewCoachInput): Promise<string> {
   await client.invitations.createInvitation({
     emailAddress: email,
     redirectUrl: `${await currentOrigin()}/sign-up`,
-    publicMetadata: { role: input.isAdmin ? "admin" : "coach" },
+    publicMetadata: { role: isAdmin ? "admin" : "coach" },
   });
 
-  const row = await db.coach.create({ data: { name, email, role: "Coach", active: true, isAdmin: !!input.isAdmin } });
+  const row = await db.coach.create({ data: { name, email, role: input.role, active: true, isAdmin } });
   revalidatePath("/settings");
   revalidatePath("/schedule");
   return row.id;

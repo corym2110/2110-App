@@ -5,6 +5,7 @@ import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
 import { getBusinessSettings } from "./settings";
 import { parseTaxRate } from "@/lib/tax";
+import { canViewFinancials } from "@/lib/roles";
 import { rangeStart, type ReportRangeKey } from "@/lib/reportRange";
 
 export type { ReportRangeKey };
@@ -171,14 +172,22 @@ export interface RealReportsSummary {
   outstandingBalance: number;
 }
 
+/** `coachId` is a UI convenience for callers who already know their own scope (e.g. the reports
+    print page, which resolves the real coach server-side before calling this) — it's never
+    trusted on its own, since this is a directly-callable Server Action regardless of which page
+    invoked it: a non-Owner/GM caller's scope is always forced to their own id here. */
 export async function getRealReportsSummary(range: ReportRangeKey, coachId?: string): Promise<RealReportsSummary> {
+  const requester = await getCurrentCoach();
+  if (!requester) throw new Error("Not authenticated.");
+  const scopedCoachId = canViewFinancials(requester.role) ? coachId : requester.id;
+
   const now = new Date();
   const since = rangeStart(range, now);
 
   const [sales, newMembers, unpaid] = await Promise.all([
-    db.sale.findMany({ where: { createdAt: { gte: since }, ...(coachId ? { coachId } : {}) }, include: { coach: true } }),
-    db.member.count({ where: { createdAt: { gte: since }, ...(coachId ? { coachId } : {}) } }),
-    db.sale.findMany({ where: { paid: false, ...(coachId ? { coachId } : {}) } }),
+    db.sale.findMany({ where: { createdAt: { gte: since }, ...(scopedCoachId ? { coachId: scopedCoachId } : {}) }, include: { coach: true } }),
+    db.member.count({ where: { createdAt: { gte: since }, ...(scopedCoachId ? { coachId: scopedCoachId } : {}) } }),
+    db.sale.findMany({ where: { paid: false, ...(scopedCoachId ? { coachId: scopedCoachId } : {}) } }),
   ]);
 
   const paid = sales.filter((s) => s.paid);
@@ -229,11 +238,12 @@ export interface SaleExportRow {
   total: number;
 }
 
-/** Every sale in range for the CSV export — scoped to the signed-in coach's own sales unless they're
-    an admin, resolved from the session itself rather than trusted from the caller. */
+/** Every sale in range for the CSV export — scoped to the signed-in coach's own sales unless
+    they're Owner/GM (same boundary as Reports and Payroll), resolved from the session itself
+    rather than trusted from the caller. */
 export async function getSalesRowsForRange(range: ReportRangeKey): Promise<SaleExportRow[]> {
   const requester = await getCurrentCoach();
-  const coachId = requester?.isAdmin ? undefined : requester?.id;
+  const coachId = requester && canViewFinancials(requester.role) ? undefined : requester?.id;
   const since = rangeStart(range, new Date());
   const rows = await db.sale.findMany({
     where: { createdAt: { gte: since }, ...(coachId ? { coachId } : {}) },

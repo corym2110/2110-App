@@ -2,12 +2,21 @@
 
 import { useState, useTransition } from "react";
 import { addCoach } from "@/server/coaches";
+import { COACH_ROLES, type CoachRole } from "@/lib/roles";
+import { Select } from "@/components/ui/Select";
 import { XIcon } from "@/components/ui/icons";
+
+const ROLE_HINTS: Record<CoachRole, string> = {
+  Owner: "Full access to everything.",
+  GM: "Same access as Owner.",
+  Admin: "Settings and staff management, not payroll or reports.",
+  Coach: "Their own schedule, clients, and sales only.",
+};
 
 export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<CoachRole>("Coach");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -18,7 +27,7 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
     setError(null);
     startTransition(async () => {
       try {
-        await addCoach({ name, email, isAdmin });
+        await addCoach({ name, email, role });
         onAdded();
         onClose();
       } catch (e) {
@@ -62,9 +71,15 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
           />
         </label>
 
-        <label className="flex items-center gap-2 text-[13px]">
-          <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} className="h-4 w-4" />
-          Admin access — can see Settings and full business reports
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11.5px] tracking-wider text-muted uppercase">Role</span>
+          <Select
+            value={role}
+            onChange={(v) => setRole(v as CoachRole)}
+            options={COACH_ROLES.map((r) => ({ value: r, label: r }))}
+            className="h-10 rounded-lg px-2.5 text-sm"
+          />
+          <span className="text-[12.5px] text-muted">{ROLE_HINTS[role]}</span>
         </label>
 
         {error && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">{error}</div>}

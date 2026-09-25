@@ -1,9 +1,27 @@
 "use server";
 
 import { db } from "./db";
+import { getCurrentCoach } from "./coaches";
 import { getOccurrencesForRange } from "./schedule";
+import { canViewFinancials } from "@/lib/roles";
 import { rangeStart, type ReportRangeKey } from "@/lib/reportRange";
 import { isoOf, MONTHS } from "@/lib/time";
+
+/** These reports take an optional coachId/coachName scope, but the caller choosing "give me
+    everyone's" is a UI convenience, not a security boundary — this Server Action is directly
+    callable regardless of which page invoked it, so a non-Owner/GM caller's scope is always
+    forced to their own id/name here, no matter what was passed in. */
+async function ownScopeOrRequested(requestedCoachId: string | undefined): Promise<string | undefined> {
+  const requester = await getCurrentCoach();
+  if (!requester) throw new Error("Not authenticated.");
+  return canViewFinancials(requester.role) ? requestedCoachId : requester.id;
+}
+
+async function ownNameScopeOrRequested(requestedCoachName: string | undefined): Promise<string | undefined> {
+  const requester = await getCurrentCoach();
+  if (!requester) throw new Error("Not authenticated.");
+  return canViewFinancials(requester.role) ? requestedCoachName : requester.name;
+}
 
 // --- Clients by registration date ---
 
@@ -14,9 +32,10 @@ export interface RegistrationCohort {
 }
 
 export async function getRegistrationCohorts(range: ReportRangeKey, coachId?: string): Promise<RegistrationCohort[]> {
+  const scopedCoachId = await ownScopeOrRequested(coachId);
   const since = rangeStart(range, new Date());
   const members = await db.member.findMany({
-    where: { createdAt: { gte: since }, ...(coachId ? { coachId } : {}) },
+    where: { createdAt: { gte: since }, ...(scopedCoachId ? { coachId: scopedCoachId } : {}) },
     select: { createdAt: true },
   });
 
@@ -44,9 +63,10 @@ export interface ClientSalesRow {
 }
 
 export async function getSalesSummaryByClient(range: ReportRangeKey, coachId?: string): Promise<ClientSalesRow[]> {
+  const scopedCoachId = await ownScopeOrRequested(coachId);
   const since = rangeStart(range, new Date());
   const sales = await db.sale.findMany({
-    where: { createdAt: { gte: since }, paid: true, memberId: { not: null }, ...(coachId ? { coachId } : {}) },
+    where: { createdAt: { gte: since }, paid: true, memberId: { not: null }, ...(scopedCoachId ? { coachId: scopedCoachId } : {}) },
     include: { member: true },
   });
 
@@ -74,11 +94,12 @@ export interface FirstVisitRow {
     range — mirrors the same name-matching approach getLastSessionByName already uses for "last
     session," just walking forward instead of back. */
 export async function getFirstVisits(range: ReportRangeKey, coachName?: string): Promise<FirstVisitRow[]> {
+  const scopedCoachName = await ownNameScopeOrRequested(coachName);
   const since = rangeStart(range, new Date());
   const sinceIso = isoOf(since);
   const todayIso = isoOf(new Date());
 
-  const members = await db.member.findMany({ where: coachName ? { coach: { name: coachName } } : undefined });
+  const members = await db.member.findMany({ where: scopedCoachName ? { coach: { name: scopedCoachName } } : undefined });
   if (members.length === 0) return [];
   const names = members.map((m) => `${m.firstName} ${m.lastName}`.trim());
 

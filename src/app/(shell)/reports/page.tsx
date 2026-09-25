@@ -8,6 +8,7 @@ import { ExportIcon } from "@/components/ui/icons";
 import { useHeaderAction } from "@/lib/useHeaderAction";
 import { useMembers } from "@/lib/useMembers";
 import { useCurrentCoach } from "@/lib/useCoaches";
+import { canViewFinancials } from "@/lib/roles";
 import { getRealReportsSummary, getSalesRowsForRange, type RealReportsSummary, type ReportRangeKey } from "@/server/sales";
 import {
   getRegistrationCohorts,
@@ -87,23 +88,23 @@ export default function ReportsPage() {
   const [dailyAttendance, setDailyAttendance] = useState<DailyAttendanceRow[]>([]);
   const members = useMembers();
   const coach = useCurrentCoach();
-  const isAdmin = coach?.isAdmin ?? false;
+  const canSeeAll = !!coach && canViewFinancials(coach.role);
   const followUp = members
-    .filter((m) => m.balance > 0 && (isAdmin || m.coach === coach?.name))
+    .filter((m) => m.balance > 0 && (canSeeAll || m.coach === coach?.name))
     .sort((a, b) => b.balance - a.balance)
     .slice(0, 6);
 
   useEffect(() => {
     if (coach === undefined) return; // still resolving who's signed in
     let cancelled = false;
-    const coachId = isAdmin ? undefined : coach?.id;
+    const coachId = canSeeAll ? undefined : coach?.id;
     Promise.all([
       getRealReportsSummary(range, coachId),
       getRegistrationCohorts(range, coachId),
       getSalesSummaryByClient(range, coachId),
-      getFirstVisits(range, isAdmin ? undefined : coach?.name),
-      isAdmin ? getClassUtilization(range) : Promise.resolve(null),
-      isAdmin ? getDailyAttendanceSummary(range) : Promise.resolve([]),
+      getFirstVisits(range, canSeeAll ? undefined : coach?.name),
+      canSeeAll ? getClassUtilization(range) : Promise.resolve(null),
+      canSeeAll ? getDailyAttendanceSummary(range) : Promise.resolve([]),
     ]).then(([s, c, sbc, fv, util, daily]) => {
       if (cancelled) return;
       setSummary(s);
@@ -116,7 +117,7 @@ export default function ReportsPage() {
     return () => {
       cancelled = true;
     };
-  }, [range, coach, isAdmin]);
+  }, [range, coach, canSeeAll]);
 
   useHeaderAction(
     <div className="relative flex-none">
@@ -168,9 +169,9 @@ export default function ReportsPage() {
     <div className="flex flex-col gap-[18px]">
       <div className="flex flex-wrap items-end justify-between gap-5">
         <div>
-          <h2 className="m-0 mb-0.5 text-[28px] font-medium tracking-tight">{isAdmin ? "Reports" : "My revenue"}</h2>
+          <h2 className="m-0 mb-0.5 text-[28px] font-medium tracking-tight">{canSeeAll ? "Reports" : "My revenue"}</h2>
           <div className="text-[13.5px] text-muted">
-            {RANGE_LABEL[range]} · {isAdmin ? "real data from sales and members" : "your sales and clients only"}
+            {RANGE_LABEL[range]} · {canSeeAll ? "real data from sales and members" : "your sales and clients only"}
           </div>
         </div>
         <div className="ml-auto flex flex-wrap gap-1 rounded-[11px] border border-divider p-1">
@@ -203,7 +204,7 @@ export default function ReportsPage() {
           <div className={`mt-1.5 text-[30px] font-semibold tabular-nums tracking-tight ${summary.outstandingBalance > 0 ? "text-bad" : ""}`}>
             {moneyRounded(summary.outstandingBalance)}
           </div>
-          <div className="mt-0.5 text-[12.5px] text-muted">{isAdmin ? "across all members, right now" : "across your clients, right now"}</div>
+          <div className="mt-0.5 text-[12.5px] text-muted">{canSeeAll ? "across all members, right now" : "across your clients, right now"}</div>
         </Card>
       </div>
 
@@ -248,7 +249,7 @@ export default function ReportsPage() {
           ))}
         </Card>
 
-        {isAdmin && (
+        {canSeeAll && (
           <Card className="px-[22px] py-5">
             <div className="mb-1.5 flex items-baseline justify-between gap-3.5">
               <h5 className="text-[15.5px] font-semibold">Coach revenue</h5>
@@ -342,7 +343,7 @@ export default function ReportsPage() {
           ))}
         </Card>
 
-        {isAdmin && (
+        {canSeeAll && (
           <Card className="px-[22px] py-5">
             <div className="mb-1.5 flex items-baseline justify-between gap-3.5">
               <h5 className="text-[15.5px] font-semibold">Class utilization</h5>
@@ -369,7 +370,7 @@ export default function ReportsPage() {
           </Card>
         )}
 
-        {isAdmin && (
+        {canSeeAll && (
           <Card className="px-[22px] py-5 sm:col-span-2">
             <div className="mb-3 flex items-baseline justify-between gap-3.5">
               <h5 className="text-[15.5px] font-semibold">Daily attendance</h5>
