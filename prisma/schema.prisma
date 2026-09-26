@@ -281,6 +281,24 @@ model Product {
   createdAt     DateTime @default(now())
 }
 
+/** Best-effort trail of who viewed/changed a record (currently: member records — contact info,
+    membership terms, waivers, shared billing links). Never blocks the real action it's attached
+    to if the write fails. */
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorName  String
+  action     String
+  targetType String
+  targetId   String
+  /** Optional secondary non-sensitive identifier for context (e.g. a waiver type, a linked member id). */
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([actorId])
+}
+
 /** Single-row business-wide settings (Settings > Facility/Payments/Notifications). Always read/written
     at id "singleton" — there's exactly one business. */
 model BusinessSettings {

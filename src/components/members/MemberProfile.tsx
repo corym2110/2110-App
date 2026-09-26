@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { useThemeStore } from "@/stores/theme";
-import { useCoaches } from "@/lib/useCoaches";
+import { useCoaches, useCurrentCoach } from "@/lib/useCoaches";
 import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
 import { cancelOccurrence } from "@/server/schedule";
 import {
@@ -16,8 +16,10 @@ import {
   getMembershipInfo,
   pauseMembership,
   resumeMembership,
+  getMemberAuditLog,
   type SharedAccountLink,
   type MembershipInfo,
+  type AuditLogRow,
 } from "@/server/members";
 import { MembershipDialog } from "@/components/members/MembershipDialog";
 import { getUnpaidSalesForMember, markSalePaid, type UnpaidSale } from "@/server/sales";
@@ -33,7 +35,7 @@ import { PREBILL_TYPES } from "@/lib/prebill";
 import { CardOnFileDialog } from "@/components/members/CardOnFileDialog";
 import { getCardOnFile, type CloverCard } from "@/server/clover";
 import { sessionTypeColor, shortLabel } from "@/data/mock/sessionTypes";
-import { addDays, formatDateShort, initialsOf, isoOf, money, slotKey, startOfToday } from "@/lib/time";
+import { addDays, formatDateShort, formatDateTime, initialsOf, isoOf, money, slotKey, startOfToday } from "@/lib/time";
 import type { Member, SessionTypeName } from "@/types";
 
 const HISTORY_LOOKBACK_DAYS = 90;
@@ -69,8 +71,10 @@ export function MemberProfile({
   const [cardDialogOpen, setCardDialogOpen] = useState(false);
   const [membership, setMembership] = useState<MembershipInfo | null | undefined>(undefined);
   const [membershipDialogOpen, setMembershipDialogOpen] = useState(false);
+  const [auditLog, setAuditLog] = useState<AuditLogRow[]>([]);
 
   const coaches = useCoaches();
+  const currentCoach = useCurrentCoach();
 
   useEffect(() => {
     getUnpaidSalesForMember(member.id).then(setUnpaidSales);
@@ -95,6 +99,12 @@ export function MemberProfile({
     getSessionCreditsForMember(member.id).then(setCredits);
   }
   useEffect(refetchCredits, [member.id]);
+
+  useEffect(() => {
+    if (!currentCoach?.isAdmin) return;
+    getMemberAuditLog(member.id).then(setAuditLog);
+  }, [member.id, currentCoach?.isAdmin]);
+
   const paidOccurrenceKeys = new Set(credits.map((c) => c.appliedOccurrenceKey).filter((k): k is string => !!k));
 
   const today = useMemo(() => startOfToday(), []);
@@ -617,6 +627,20 @@ export function MemberProfile({
           </>
         )}
       </Card>
+
+      {currentCoach?.isAdmin && (
+        <Card className="px-[22px] py-5">
+          <h5 className="mb-3 text-[15.5px] font-semibold">Activity</h5>
+          {auditLog.length === 0 && <div className="py-4 text-center text-[13.5px] text-muted">No activity recorded yet.</div>}
+          {auditLog.map((a) => (
+            <div key={a.id} className="flex items-center gap-3.5 border-b border-divider py-2.5 last:border-b-0">
+              <span className="w-[150px] flex-none text-[12.5px] tabular-nums text-muted">{formatDateTime(new Date(a.createdAt))}</span>
+              <span className="min-w-0 flex-1 truncate text-[13.5px]">{a.action}</span>
+              <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{a.actorName}</span>
+            </div>
+          ))}
+        </Card>
+      )}
 
       {invoiceOpen && <CreateInvoiceDialog member={member} onClose={() => setInvoiceOpen(false)} />}
       {historyOpen && <PurchaseHistoryDialog memberId={member.id} memberName={member.name} onClose={() => setHistoryOpen(false)} />}

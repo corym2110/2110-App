@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
 import { getLastSessionByName } from "./schedule";
+import { logAudit, getAuditLogForTarget } from "./auditLog";
 import { clock, formatDateShort } from "@/lib/time";
 import { parseInput } from "@/lib/validate";
 import { runAction, type ActionResult } from "@/lib/actionResult";
@@ -95,7 +96,46 @@ export async function getMemberById(id: string): Promise<Member | null> {
   const row = await db.member.findUnique({ where: { id }, include: { coach: true, sales: ALL_SALES_INCLUDE } });
   if (!row) return null;
   const lastSessions = await getLastSessionByName([fullName(row)]);
+
+  const actor = await getCurrentCoach();
+  await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.view", targetType: "Member", targetId: row.id });
+
   return toMember(row, formatLastSession(lastSessions[fullName(row)]));
+}
+
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  "member.create": "Added member",
+  "member.update": "Updated details",
+  "member.merge": "Merged duplicate member",
+  "member.setMembership": "Set membership",
+  "member.pause": "Paused membership",
+  "member.resume": "Resumed membership",
+  "member.sharedAccount.add": "Linked shared account",
+  "member.sharedAccount.remove": "Removed shared account",
+  "member.waiver.sign": "Signed waiver",
+  "member.waiver.view": "Viewed waiver",
+  "member.view": "Viewed profile",
+};
+
+export interface AuditLogRow {
+  id: string;
+  actorName: string;
+  action: string;
+  detail: string | null;
+  createdAt: string;
+}
+
+/** Last 10 audit entries for a member's record — writes and sensitive views (waiver access,
+    profile view) alike. Excludes nothing per-record; bulk listings (getMembers) are never logged. */
+export async function getMemberAuditLog(memberId: string): Promise<AuditLogRow[]> {
+  const rows = await getAuditLogForTarget("Member", memberId);
+  return rows.map((r) => ({
+    id: r.id,
+    actorName: r.actorName,
+    action: AUDIT_ACTION_LABELS[r.action] ?? r.action,
+    detail: r.detail,
+    createdAt: r.createdAt.toISOString(),
+  }));
 }
 
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -139,6 +179,9 @@ export async function addMember(input: NewMemberInput): Promise<ActionResult<str
       })
       .catch(friendlyMemberError);
 
+    const actor = await getCurrentCoach();
+    await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.create", targetType: "Member", targetId: row.id });
+
     revalidatePath("/members");
     return row.id;
   });
@@ -168,6 +211,9 @@ export async function updateMemberDetails(memberId: string, input: MemberDetails
         },
       })
       .catch(friendlyMemberError);
+
+    const actor = await getCurrentCoach();
+    await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.update", targetType: "Member", targetId: memberId });
 
     revalidatePath("/members");
     revalidatePath(`/members/${memberId}`);
@@ -228,12 +274,20 @@ export async function setMembership(memberId: string, input: { name: string; pri
         lastBillError: null,
       },
     });
+
+    const actor = await getCurrentCoach();
+    await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.setMembership", targetType: "Member", targetId: memberId });
+
     revalidatePath(`/members/${memberId}`);
   });
 }
 
 export async function pauseMembership(memberId: string): Promise<void> {
   await db.member.update({ where: { id: memberId }, data: { membershipStatus: "paused" } });
+
+  const actor = await getCurrentCoach();
+  await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.pause", targetType: "Member", targetId: memberId });
+
   revalidatePath(`/members/${memberId}`);
 }
 
@@ -242,6 +296,10 @@ export async function resumeMembership(memberId: string): Promise<void> {
     where: { id: memberId },
     data: { membershipStatus: "active", billFailCount: 0, lastBillError: null },
   });
+
+  const actor = await getCurrentCoach();
+  await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.resume", targetType: "Member", targetId: memberId });
+
   revalidatePath(`/members/${memberId}`);
 }
 
@@ -274,11 +332,19 @@ export async function addSharedAccount(payerId: string, beneficiaryId: string): 
     create: { payerId, beneficiaryId },
     update: {},
   });
+
+  const actor = await getCurrentCoach();
+  await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.sharedAccount.add", targetType: "Member", targetId: payerId, detail: beneficiaryId });
+
   revalidatePath(`/members/${payerId}`);
 }
 
 export async function removeSharedAccount(payerId: string, beneficiaryId: string): Promise<void> {
   await db.sharedAccount.deleteMany({ where: { payerId, beneficiaryId } });
+
+  const actor = await getCurrentCoach();
+  await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.sharedAccount.remove", targetType: "Member", targetId: payerId, detail: beneficiaryId });
+
   revalidatePath(`/members/${payerId}`);
 }
 
@@ -395,6 +461,8 @@ export async function mergeMembers(input: MergeMembersInput): Promise<ActionResu
       });
     });
   
+    await logAudit({ actorId: requester.id, actorName: requester.name, action: "member.merge", targetType: "Member", targetId: keep.id, detail: remove.id });
+
     revalidatePath("/members");
     revalidatePath(`/members/${keep.id}`);
     revalidatePath("/schedule");

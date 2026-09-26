@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
+import { logAudit } from "./auditLog";
 import { parseInput } from "@/lib/validate";
 import { SignWaiverInputSchema, WaiverTypeSchema, type SignWaiverInput } from "@/lib/schemas";
 import { runAction, type ActionResult } from "@/lib/actionResult";
@@ -40,6 +41,10 @@ export async function signWaiver(input: SignWaiverInput): Promise<ActionResult<s
         signedByCoachId: data.signedByCoachId || undefined,
       },
     });
+
+    const actor = await getCurrentCoach();
+    await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.waiver.sign", targetType: "Member", targetId: data.memberId, detail: data.waiverType });
+
     revalidatePath(`/members/${data.memberId}`);
     return row.id;
   });
@@ -82,6 +87,9 @@ export async function getWaiverSignature(id: string): Promise<WaiverDetail | nul
 
   const row = await db.waiverSignature.findUnique({ where: { id }, include: { member: true, signedByCoach: true } });
   if (!row) return null;
+
+  await logAudit({ actorId: requester.id, actorName: requester.name, action: "member.waiver.view", targetType: "Member", targetId: row.member.id, detail: row.waiverType });
+
   return {
     id: row.id,
     waiverType: row.waiverType,
