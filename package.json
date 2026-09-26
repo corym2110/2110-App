@@ -10,15 +10,15 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.9.2",
+    "@clerk/nextjs": "^7.9.5",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "7.10.0",
     "@sentry/nextjs": "^11.0.0",
     "dotenv": "^17.4.2",
-    "next": "16.3.5",
+    "next": "16.3.6",
     "pg": "^8.23.0",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "zod": "^4.6.5",
     "zustand": "^5.0.15"
   },
@@ -30,12 +30,12 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.5",
+    "eslint-config-next": "16.3.6",
     "playwright": "^1.63.0",
     "postcss": "^8.5.28",
     "prisma": "7.10.0",
     "tailwindcss": "^4.3.3",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }
