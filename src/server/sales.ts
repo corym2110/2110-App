@@ -15,29 +15,32 @@ import {
   type SaleLineItem,
 } from "@/lib/schemas";
 import { rangeStart, type ReportRangeKey } from "@/lib/reportRange";
+import { runAction, type ActionResult } from "@/lib/actionResult";
 
 export type { ReportRangeKey, NewSaleInput, SaleLineItem };
 
-export async function createSale(input: NewSaleInput): Promise<string> {
-  const data = parseInput(NewSaleInputSchema, input);
-  const taxRate = data.taxRate ?? parseTaxRate((await getBusinessSettings()).salesTax);
-  const row = await db.sale.create({
-    data: {
-      memberId: data.memberId || undefined,
-      coachId: data.coachId || undefined,
-      summary: data.summary,
-      total: data.total,
-      method: data.method,
-      paid: data.paid,
-      notes: data.notes || undefined,
-      lineItems: data.lineItems ? (data.lineItems as object) : undefined,
-      taxRate,
-    },
+export async function createSale(input: NewSaleInput): Promise<ActionResult<string>> {
+  return runAction(async () => {
+    const data = parseInput(NewSaleInputSchema, input);
+    const taxRate = data.taxRate ?? parseTaxRate((await getBusinessSettings()).salesTax);
+    const row = await db.sale.create({
+      data: {
+        memberId: data.memberId || undefined,
+        coachId: data.coachId || undefined,
+        summary: data.summary,
+        total: data.total,
+        method: data.method,
+        paid: data.paid,
+        notes: data.notes || undefined,
+        lineItems: data.lineItems ? (data.lineItems as object) : undefined,
+        taxRate,
+      },
+    });
+    if (data.memberId) revalidatePath(`/members/${data.memberId}`);
+    revalidatePath("/members");
+    revalidatePath("/reports");
+    return row.id;
   });
-  if (data.memberId) revalidatePath(`/members/${data.memberId}`);
-  revalidatePath("/members");
-  revalidatePath("/reports");
-  return row.id;
 }
 
 export interface UnpaidSale {

@@ -6,6 +6,7 @@ import { getCurrentCoach } from "./coaches";
 import { getLastSessionByName } from "./schedule";
 import { clock, formatDateShort } from "@/lib/time";
 import { parseInput } from "@/lib/validate";
+import { runAction, type ActionResult } from "@/lib/actionResult";
 import {
   MemberDetailsInputSchema,
   SetMembershipInputSchema,
@@ -99,61 +100,78 @@ export async function getMemberById(id: string): Promise<Member | null> {
 
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export async function addMember(input: NewMemberInput): Promise<string> {
-  const data = parseInput(MemberDetailsInputSchema, input);
-
-  const coach = await db.coach.findFirst({ where: { active: true }, orderBy: { name: "asc" } });
-  const now = new Date();
-
-  const row = await db.member.create({
-    data: {
-      firstName: data.firstName,
-      lastName: data.lastName,
-      email: data.email,
-      phone: data.phone,
-      gender: data.gender,
-      address: data.address || undefined,
-      postalCode: data.postalCode || undefined,
-      city: data.city || undefined,
-      province: data.province || undefined,
-      dateOfBirth: data.dateOfBirth ? new Date(`${data.dateOfBirth}T00:00:00Z`) : undefined,
-      emergencyContactName: data.emergencyContactName || undefined,
-      emergencyContactPhone: data.emergencyContactPhone || undefined,
-      notes: data.notes || undefined,
-      plan: "No plan yet",
-      since: `${MONTHS_SHORT[now.getMonth()]} ${now.getFullYear()}`,
-      coachId: coach?.id,
-    },
-  });
-
-  revalidatePath("/members");
-  return row.id;
+/** Prisma's raw "Unique constraint failed on the fields: (`email`)" is not something to show a
+    real user — translate the one unique field members actually has into plain language. */
+function friendlyMemberError(e: unknown): never {
+  if (e && typeof e === "object" && "code" in e && e.code === "P2002") {
+    throw new Error("That email is already in use by another member.");
+  }
+  throw e;
 }
 
-export async function updateMemberDetails(memberId: string, input: MemberDetailsInput): Promise<void> {
-  const data = parseInput(MemberDetailsInputSchema, input);
+export async function addMember(input: NewMemberInput): Promise<ActionResult<string>> {
+  return runAction(async () => {
+    const data = parseInput(MemberDetailsInputSchema, input);
 
-  await db.member.update({
-    where: { id: memberId },
-    data: {
-      firstName: data.firstName,
-      lastName: data.lastName,
-      email: data.email,
-      phone: data.phone,
-      gender: data.gender,
-      address: data.address || null,
-      postalCode: data.postalCode || null,
-      city: data.city || null,
-      province: data.province || null,
-      dateOfBirth: data.dateOfBirth ? new Date(`${data.dateOfBirth}T00:00:00Z`) : null,
-      emergencyContactName: data.emergencyContactName || null,
-      emergencyContactPhone: data.emergencyContactPhone || null,
-      notes: data.notes || null,
-    },
+    const coach = await db.coach.findFirst({ where: { active: true }, orderBy: { name: "asc" } });
+    const now = new Date();
+
+    const row = await db.member
+      .create({
+        data: {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone,
+          gender: data.gender,
+          address: data.address || undefined,
+          postalCode: data.postalCode || undefined,
+          city: data.city || undefined,
+          province: data.province || undefined,
+          dateOfBirth: data.dateOfBirth ? new Date(`${data.dateOfBirth}T00:00:00Z`) : undefined,
+          emergencyContactName: data.emergencyContactName || undefined,
+          emergencyContactPhone: data.emergencyContactPhone || undefined,
+          notes: data.notes || undefined,
+          plan: "No plan yet",
+          since: `${MONTHS_SHORT[now.getMonth()]} ${now.getFullYear()}`,
+          coachId: coach?.id,
+        },
+      })
+      .catch(friendlyMemberError);
+
+    revalidatePath("/members");
+    return row.id;
   });
+}
 
-  revalidatePath("/members");
-  revalidatePath(`/members/${memberId}`);
+export async function updateMemberDetails(memberId: string, input: MemberDetailsInput): Promise<ActionResult> {
+  return runAction(async () => {
+    const data = parseInput(MemberDetailsInputSchema, input);
+
+    await db.member
+      .update({
+        where: { id: memberId },
+        data: {
+          firstName: data.firstName,
+          lastName: data.lastName,
+          email: data.email,
+          phone: data.phone,
+          gender: data.gender,
+          address: data.address || null,
+          postalCode: data.postalCode || null,
+          city: data.city || null,
+          province: data.province || null,
+          dateOfBirth: data.dateOfBirth ? new Date(`${data.dateOfBirth}T00:00:00Z`) : null,
+          emergencyContactName: data.emergencyContactName || null,
+          emergencyContactPhone: data.emergencyContactPhone || null,
+          notes: data.notes || null,
+        },
+      })
+      .catch(friendlyMemberError);
+
+    revalidatePath("/members");
+    revalidatePath(`/members/${memberId}`);
+  });
 }
 
 
@@ -195,21 +213,23 @@ export async function getMembershipInfo(memberId: string): Promise<MembershipInf
 /** Sets up (or edits) a member's recurring membership — activates billing starting on
     `nextBillDate`. Resets the failure counter/status so editing a plan after a "failed" state
     (e.g. staff fixed the card) puts it straight back to actively retrying. */
-export async function setMembership(memberId: string, input: { name: string; price: number; nextBillDate: string }): Promise<void> {
-  const data = parseInput(SetMembershipInputSchema, input);
+export async function setMembership(memberId: string, input: { name: string; price: number; nextBillDate: string }): Promise<ActionResult> {
+  return runAction(async () => {
+    const data = parseInput(SetMembershipInputSchema, input);
 
-  await db.member.update({
-    where: { id: memberId },
-    data: {
-      membershipName: data.name,
-      membershipPrice: data.price,
-      membershipStatus: "active",
-      nextBillDate: data.nextBillDate,
-      billFailCount: 0,
-      lastBillError: null,
-    },
+    await db.member.update({
+      where: { id: memberId },
+      data: {
+        membershipName: data.name,
+        membershipPrice: data.price,
+        membershipStatus: "active",
+        nextBillDate: data.nextBillDate,
+        billFailCount: 0,
+        lastBillError: null,
+      },
+    });
+    revalidatePath(`/members/${memberId}`);
   });
-  revalidatePath(`/members/${memberId}`);
 }
 
 export async function pauseMembership(memberId: string): Promise<void> {
@@ -268,114 +288,116 @@ export async function removeSharedAccount(payerId: string, beneficiaryId: string
  * attendance) isn't linked by id — it's matched by name string — so every occurrence referencing
  * either duplicate's old name is re-pointed to the merged record's final name.
  */
-export async function mergeMembers(input: MergeMembersInput): Promise<void> {
-  const requester = await getCurrentCoach();
-  if (!requester?.isAdmin) throw new Error("Only an admin can merge members.");
-  const parsed = parseInput(MergeMembersInputSchema, input);
-  if (parsed.keepId === parsed.removeId) throw new Error("Pick two different members.");
-
-  const [keep, remove] = await Promise.all([
-    db.member.findUniqueOrThrow({ where: { id: parsed.keepId } }),
-    db.member.findUniqueOrThrow({ where: { id: parsed.removeId } }),
-  ]);
-
-  const oldKeepName = fullName(keep);
-  const oldRemoveName = fullName(remove);
-  const newName = `${parsed.fields.firstName} ${parsed.fields.lastName}`.trim();
-  const oldNames = [...new Set([oldKeepName, oldRemoveName])].filter((n) => n && n !== newName);
-
-  await db.$transaction(async (tx) => {
-    // Sales move to the survivor by foreign key.
-    await tx.sale.updateMany({ where: { memberId: remove.id }, data: { memberId: keep.id } });
-
-    // Shared-account links: move to the survivor, skip self-links, and drop (not duplicate) a
-    // link the survivor already has to the same other member.
-    const asPayer = await tx.sharedAccount.findMany({ where: { payerId: remove.id } });
-    for (const link of asPayer) {
-      if (link.beneficiaryId === keep.id) continue;
-      await tx.sharedAccount.upsert({
-        where: { payerId_beneficiaryId: { payerId: keep.id, beneficiaryId: link.beneficiaryId } },
-        create: { payerId: keep.id, beneficiaryId: link.beneficiaryId },
-        update: {},
-      });
-    }
-    const asBeneficiary = await tx.sharedAccount.findMany({ where: { beneficiaryId: remove.id } });
-    for (const link of asBeneficiary) {
-      if (link.payerId === keep.id) continue;
-      await tx.sharedAccount.upsert({
-        where: { payerId_beneficiaryId: { payerId: link.payerId, beneficiaryId: keep.id } },
-        create: { payerId: link.payerId, beneficiaryId: keep.id },
-        update: {},
-      });
-    }
-
-    // Re-point every schedule reference (by name) from either duplicate's old name to the final name.
-    if (oldNames.length > 0) {
-      await tx.booking.updateMany({ where: { name: { in: oldNames } }, data: { name: newName } });
-      await tx.recurringSeries.updateMany({ where: { clientName: { in: oldNames } }, data: { clientName: newName } });
-
-      const rosterBookings = await tx.booking.findMany({ where: { roster: { hasSome: oldNames } } });
-      for (const b of rosterBookings) {
-        const roster = [...new Set(b.roster.map((n) => (oldNames.includes(n) ? newName : n)))];
-        await tx.booking.update({ where: { id: b.id }, data: { roster } });
+export async function mergeMembers(input: MergeMembersInput): Promise<ActionResult> {
+  return runAction(async () => {
+    const requester = await getCurrentCoach();
+    if (!requester?.isAdmin) throw new Error("Only an admin can merge members.");
+    const parsed = parseInput(MergeMembersInputSchema, input);
+    if (parsed.keepId === parsed.removeId) throw new Error("Pick two different members.");
+  
+    const [keep, remove] = await Promise.all([
+      db.member.findUniqueOrThrow({ where: { id: parsed.keepId } }),
+      db.member.findUniqueOrThrow({ where: { id: parsed.removeId } }),
+    ]);
+  
+    const oldKeepName = fullName(keep);
+    const oldRemoveName = fullName(remove);
+    const newName = `${parsed.fields.firstName} ${parsed.fields.lastName}`.trim();
+    const oldNames = [...new Set([oldKeepName, oldRemoveName])].filter((n) => n && n !== newName);
+  
+    await db.$transaction(async (tx) => {
+      // Sales move to the survivor by foreign key.
+      await tx.sale.updateMany({ where: { memberId: remove.id }, data: { memberId: keep.id } });
+  
+      // Shared-account links: move to the survivor, skip self-links, and drop (not duplicate) a
+      // link the survivor already has to the same other member.
+      const asPayer = await tx.sharedAccount.findMany({ where: { payerId: remove.id } });
+      for (const link of asPayer) {
+        if (link.beneficiaryId === keep.id) continue;
+        await tx.sharedAccount.upsert({
+          where: { payerId_beneficiaryId: { payerId: keep.id, beneficiaryId: link.beneficiaryId } },
+          create: { payerId: keep.id, beneficiaryId: link.beneficiaryId },
+          update: {},
+        });
       }
-
-      for (const oldName of oldNames) {
-        const waitRows = await tx.waitlistEntry.findMany({ where: { memberName: oldName } });
-        for (const w of waitRows) {
-          const dupe = await tx.waitlistEntry.findUnique({ where: { occurrenceKey_memberName: { occurrenceKey: w.occurrenceKey, memberName: newName } } });
-          if (dupe) await tx.waitlistEntry.delete({ where: { id: w.id } });
-          else await tx.waitlistEntry.update({ where: { id: w.id }, data: { memberName: newName } });
+      const asBeneficiary = await tx.sharedAccount.findMany({ where: { beneficiaryId: remove.id } });
+      for (const link of asBeneficiary) {
+        if (link.payerId === keep.id) continue;
+        await tx.sharedAccount.upsert({
+          where: { payerId_beneficiaryId: { payerId: link.payerId, beneficiaryId: keep.id } },
+          create: { payerId: link.payerId, beneficiaryId: keep.id },
+          update: {},
+        });
+      }
+  
+      // Re-point every schedule reference (by name) from either duplicate's old name to the final name.
+      if (oldNames.length > 0) {
+        await tx.booking.updateMany({ where: { name: { in: oldNames } }, data: { name: newName } });
+        await tx.recurringSeries.updateMany({ where: { clientName: { in: oldNames } }, data: { clientName: newName } });
+  
+        const rosterBookings = await tx.booking.findMany({ where: { roster: { hasSome: oldNames } } });
+        for (const b of rosterBookings) {
+          const roster = [...new Set(b.roster.map((n) => (oldNames.includes(n) ? newName : n)))];
+          await tx.booking.update({ where: { id: b.id }, data: { roster } });
         }
-
-        const addRows = await tx.classAddIn.findMany({ where: { memberName: oldName } });
-        for (const a of addRows) {
-          const dupe = await tx.classAddIn.findUnique({ where: { occurrenceKey_memberName: { occurrenceKey: a.occurrenceKey, memberName: newName } } });
-          if (dupe) await tx.classAddIn.delete({ where: { id: a.id } });
-          else await tx.classAddIn.update({ where: { id: a.id }, data: { memberName: newName } });
-        }
-
-        // Attendance rows are keyed "iso-start-coachId-name" — recompute the key with the new name.
-        const attRows = await tx.attendanceRecord.findMany({ where: { slotKey: { endsWith: `-${oldName}` } } });
-        for (const row of attRows) {
-          const prefix = row.slotKey.slice(0, row.slotKey.length - oldName.length - 1);
-          const newKey = `${prefix}-${newName}`;
-          await tx.attendanceRecord.delete({ where: { slotKey: row.slotKey } });
-          await tx.attendanceRecord.upsert({ where: { slotKey: newKey }, create: { slotKey: newKey, iso: row.iso, status: row.status }, update: { status: row.status } });
+  
+        for (const oldName of oldNames) {
+          const waitRows = await tx.waitlistEntry.findMany({ where: { memberName: oldName } });
+          for (const w of waitRows) {
+            const dupe = await tx.waitlistEntry.findUnique({ where: { occurrenceKey_memberName: { occurrenceKey: w.occurrenceKey, memberName: newName } } });
+            if (dupe) await tx.waitlistEntry.delete({ where: { id: w.id } });
+            else await tx.waitlistEntry.update({ where: { id: w.id }, data: { memberName: newName } });
+          }
+  
+          const addRows = await tx.classAddIn.findMany({ where: { memberName: oldName } });
+          for (const a of addRows) {
+            const dupe = await tx.classAddIn.findUnique({ where: { occurrenceKey_memberName: { occurrenceKey: a.occurrenceKey, memberName: newName } } });
+            if (dupe) await tx.classAddIn.delete({ where: { id: a.id } });
+            else await tx.classAddIn.update({ where: { id: a.id }, data: { memberName: newName } });
+          }
+  
+          // Attendance rows are keyed "iso-start-coachId-name" — recompute the key with the new name.
+          const attRows = await tx.attendanceRecord.findMany({ where: { slotKey: { endsWith: `-${oldName}` } } });
+          for (const row of attRows) {
+            const prefix = row.slotKey.slice(0, row.slotKey.length - oldName.length - 1);
+            const newKey = `${prefix}-${newName}`;
+            await tx.attendanceRecord.delete({ where: { slotKey: row.slotKey } });
+            await tx.attendanceRecord.upsert({ where: { slotKey: newKey }, create: { slotKey: newKey, iso: row.iso, status: row.status }, update: { status: row.status } });
+          }
         }
       }
-    }
-
-    // Delete the duplicate last — its dependents have already been moved off it, and this frees
-    // up its email before the survivor is updated (email is unique).
-    await tx.member.delete({ where: { id: remove.id } });
-
-    await tx.member.update({
-      where: { id: keep.id },
-      data: {
-        firstName: parsed.fields.firstName,
-        lastName: parsed.fields.lastName,
-        email: parsed.fields.email,
-        phone: parsed.fields.phone,
-        gender: parsed.fields.gender,
-        address: parsed.fields.address,
-        postalCode: parsed.fields.postalCode,
-        city: parsed.fields.city,
-        province: parsed.fields.province,
-        // Not dialog-pickable — the two duplicates are the same real person, so just keep
-        // whichever record already has each value set, preferring the survivor's.
-        dateOfBirth: keep.dateOfBirth ?? remove.dateOfBirth,
-        emergencyContactName: keep.emergencyContactName ?? remove.emergencyContactName,
-        emergencyContactPhone: keep.emergencyContactPhone ?? remove.emergencyContactPhone,
-        plan: parsed.fields.plan,
-        since: parsed.fields.since,
-        coachId: parsed.fields.coachId,
-      },
+  
+      // Delete the duplicate last — its dependents have already been moved off it, and this frees
+      // up its email before the survivor is updated (email is unique).
+      await tx.member.delete({ where: { id: remove.id } });
+  
+      await tx.member.update({
+        where: { id: keep.id },
+        data: {
+          firstName: parsed.fields.firstName,
+          lastName: parsed.fields.lastName,
+          email: parsed.fields.email,
+          phone: parsed.fields.phone,
+          gender: parsed.fields.gender,
+          address: parsed.fields.address,
+          postalCode: parsed.fields.postalCode,
+          city: parsed.fields.city,
+          province: parsed.fields.province,
+          // Not dialog-pickable — the two duplicates are the same real person, so just keep
+          // whichever record already has each value set, preferring the survivor's.
+          dateOfBirth: keep.dateOfBirth ?? remove.dateOfBirth,
+          emergencyContactName: keep.emergencyContactName ?? remove.emergencyContactName,
+          emergencyContactPhone: keep.emergencyContactPhone ?? remove.emergencyContactPhone,
+          plan: parsed.fields.plan,
+          since: parsed.fields.since,
+          coachId: parsed.fields.coachId,
+        },
+      });
     });
+  
+    revalidatePath("/members");
+    revalidatePath(`/members/${keep.id}`);
+    revalidatePath("/schedule");
+    revalidatePath("/classes");
   });
-
-  revalidatePath("/members");
-  revalidatePath(`/members/${keep.id}`);
-  revalidatePath("/schedule");
-  revalidatePath("/classes");
 }

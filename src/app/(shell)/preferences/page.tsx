@@ -49,6 +49,7 @@ export default function CoachPreferencesPage() {
 
   const [saved, setSaved] = useState(false);
   const [isSaving, startSaving] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const [flagsOverride, setFlagsOverride] = useState<typeof DEFAULT_FLAGS | null>(null);
   const flags = flagsOverride ?? coach?.notifyFlags ?? DEFAULT_FLAGS;
   const [landingOverride, setLandingOverride] = useState<string | null>(null);
@@ -67,9 +68,18 @@ export default function CoachPreferencesPage() {
 
   function savePreferences() {
     if (!coachId) return;
+    setError(null);
     startSaving(async () => {
-      await updateCoachPreferences(coachId, { notifyFlags: flags, landing, calendarView: calView });
-      setSaved(true);
+      try {
+        const result = await updateCoachPreferences(coachId, { notifyFlags: flags, landing, calendarView: calView });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setSaved(true);
+      } catch {
+        setError("Couldn't save preferences. Try again.");
+      }
     });
   }
 
@@ -84,8 +94,17 @@ export default function CoachPreferencesPage() {
   const hoursSummary = onDays.length === 0 ? "No days set" : `${onDays.length} days · ${Number.isInteger(totalHours) ? totalHours : totalHours.toFixed(1)}h a week`;
 
   async function persistHours(next: WeeklyHours) {
-    await setWeeklyHours(coachId, next);
-    refetch();
+    setError(null);
+    try {
+      const result = await setWeeklyHours(coachId, next);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      refetch();
+    } catch {
+      setError("Couldn't save your hours. Try again.");
+    }
   }
 
   function toggleDayOn(day: DayOfWeek) {
@@ -117,12 +136,21 @@ export default function CoachPreferencesPage() {
 
   async function handleAddTimeOff() {
     if (!offFrom || !coachId) return;
-    await addTimeOff(coachId, { from: offFrom, to: offTo || offFrom, reason: offReasonText.trim() || "Time off", type: offType });
-    refetch();
-    setOffFrom("");
-    setOffTo("");
-    setOffReasonText("");
-    setSaved(false);
+    setError(null);
+    try {
+      const result = await addTimeOff(coachId, { from: offFrom, to: offTo || offFrom, reason: offReasonText.trim() || "Time off", type: offType });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      refetch();
+      setOffFrom("");
+      setOffTo("");
+      setOffReasonText("");
+      setSaved(false);
+    } catch {
+      setError("Couldn't add that time off. Try again.");
+    }
   }
 
   async function handleRemoveTimeOff(id: string) {
@@ -144,6 +172,7 @@ export default function CoachPreferencesPage() {
 
   return (
     <div className="flex flex-col gap-[18px]">
+      {error && <div className="rounded-lg bg-bad/10 px-3.5 py-2.5 text-[13px] text-bad">{error}</div>}
       <Card className="flex flex-wrap items-start gap-[18px] px-6 py-[22px]">
         <div className="grid h-16 w-16 flex-none place-items-center rounded-full bg-accent-deep text-[21px] font-semibold text-[#e7e5fe]">
           {initialsOf(coach.name)}
@@ -151,7 +180,7 @@ export default function CoachPreferencesPage() {
         <div className="min-w-[220px] flex-1">
           <h2 className="m-0 text-[27px] font-medium tracking-tight">{coach.name}</h2>
           <div className="mt-0.5 text-[13.5px] text-muted">
-            {coach.isAdmin ? "Admin" : "Coach"} · {coach.email}
+            {coach.role} · {coach.email}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-full bg-row px-2.5 py-1 text-[12.5px]">{coach.isAdmin ? "Full access" : "Coach access"}</span>

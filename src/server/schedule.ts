@@ -21,6 +21,7 @@ import {
   type Shift,
   type DayHoursDTO,
 } from "@/lib/schemas";
+import { runAction, type ActionResult } from "@/lib/actionResult";
 import type { CoachId, DayOfWeek, SessionTypeName, TimeOffEntry } from "@/types";
 
 export type { NewBookingInput, NewSeriesInput, WeeklyHours, Shift, DayHoursDTO };
@@ -162,46 +163,52 @@ export async function getLastSessionByName(names: string[]): Promise<Record<stri
   return result;
 }
 
-export async function addBooking(input: NewBookingInput): Promise<string> {
-  const data = parseInput(NewBookingInputSchema, input);
-  const row = await db.booking.create({
-    data: {
-      iso: data.iso,
-      start: data.start,
-      duration: data.duration,
-      type: data.type,
-      capacity: data.capacity ?? 0,
-      coachId: data.coachId,
-      name: data.name,
-      roster: data.roster ?? [],
-    },
+export async function addBooking(input: NewBookingInput): Promise<ActionResult<string>> {
+  return runAction(async () => {
+    const data = parseInput(NewBookingInputSchema, input);
+    const row = await db.booking.create({
+      data: {
+        iso: data.iso,
+        start: data.start,
+        duration: data.duration,
+        type: data.type,
+        capacity: data.capacity ?? 0,
+        coachId: data.coachId,
+        name: data.name,
+        roster: data.roster ?? [],
+      },
+    });
+    afterSchedule();
+    return row.id;
   });
-  afterSchedule();
-  return row.id;
 }
 
-export async function updateBooking(id: string, patch: Partial<NewBookingInput>): Promise<void> {
-  const data = parseInput(BookingPatchSchema, patch);
-  await db.booking.update({ where: { id }, data });
-  afterSchedule();
+export async function updateBooking(id: string, patch: Partial<NewBookingInput>): Promise<ActionResult> {
+  return runAction(async () => {
+    const data = parseInput(BookingPatchSchema, patch);
+    await db.booking.update({ where: { id }, data });
+    afterSchedule();
+  });
 }
 
-export async function addSeries(input: NewSeriesInput): Promise<string> {
-  const data = parseInput(NewSeriesInputSchema, input);
-  const row = await db.recurringSeries.create({
-    data: {
-      clientName: data.clientName,
-      type: data.type,
-      capacity: data.capacity ?? 0,
-      coachId: data.coachId,
-      duration: data.duration,
-      days: data.days,
-      fromIso: data.fromIso,
-      toIso: data.toIso,
-    },
+export async function addSeries(input: NewSeriesInput): Promise<ActionResult<string>> {
+  return runAction(async () => {
+    const data = parseInput(NewSeriesInputSchema, input);
+    const row = await db.recurringSeries.create({
+      data: {
+        clientName: data.clientName,
+        type: data.type,
+        capacity: data.capacity ?? 0,
+        coachId: data.coachId,
+        duration: data.duration,
+        days: data.days,
+        fromIso: data.fromIso,
+        toIso: data.toIso,
+      },
+    });
+    afterSchedule();
+    return row.id;
   });
-  afterSchedule();
-  return row.id;
 }
 
 /** Cancels one occurrence: deletes it outright if it's a one-off booking, otherwise excludes
@@ -446,18 +453,22 @@ export async function getCoachAvailability(coachId: string): Promise<CoachAvaila
   };
 }
 
-export async function setWeeklyHours(coachId: string, hours: WeeklyHours): Promise<void> {
-  const data = parseInput(WeeklyHoursSchema, hours);
-  await db.coach.update({ where: { id: coachId }, data: { weeklyHours: data as object } });
-  revalidatePath("/preferences");
-  revalidatePath("/schedule");
+export async function setWeeklyHours(coachId: string, hours: WeeklyHours): Promise<ActionResult> {
+  return runAction(async () => {
+    const data = parseInput(WeeklyHoursSchema, hours);
+    await db.coach.update({ where: { id: coachId }, data: { weeklyHours: data as object } });
+    revalidatePath("/preferences");
+    revalidatePath("/schedule");
+  });
 }
 
-export async function addTimeOff(coachId: string, entry: TimeOffEntry): Promise<void> {
-  const data = parseInput(TimeOffEntrySchema, entry);
-  await db.timeOff.create({ data: { coachId, fromIso: data.from, toIso: data.to, reason: data.reason, type: data.type } });
-  revalidatePath("/preferences");
-  revalidatePath("/schedule");
+export async function addTimeOff(coachId: string, entry: TimeOffEntry): Promise<ActionResult> {
+  return runAction(async () => {
+    const data = parseInput(TimeOffEntrySchema, entry);
+    await db.timeOff.create({ data: { coachId, fromIso: data.from, toIso: data.to, reason: data.reason, type: data.type } });
+    revalidatePath("/preferences");
+    revalidatePath("/schedule");
+  });
 }
 
 export async function removeTimeOff(timeOffId: string): Promise<void> {

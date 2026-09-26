@@ -20,17 +20,21 @@ export function AddSessionTypeDialog({ onClose, onAdded }: { onClose: () => void
     setError(null);
     startTransition(async () => {
       try {
-        await addSessionType({
+        const result = await addSessionType({
           name,
           duration: Number(duration) || 60,
           capacity: Number(capacity) || 0,
           price: Number(price) || 0,
           recurring,
         });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         onAdded();
         onClose();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't add that session type.");
+      } catch {
+        setError("Couldn't add that session type. Try again.");
       }
     });
   }

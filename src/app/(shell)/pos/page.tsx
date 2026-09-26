@@ -186,7 +186,7 @@ function POSInner() {
     const lineItems = lines.map((p) => ({ description: p.name, quantity: cart[p.id], unitPrice: unitPrice(p) }));
     if (discAmt > 0) lineItems.push({ description: "Discount", quantity: 1, unitPrice: -discAmt });
     try {
-      const saleId = await createSale({
+      const saleResult = await createSale({
         memberId: member || undefined,
         coachId: memberCoachId,
         summary,
@@ -196,6 +196,18 @@ function POSInner() {
         lineItems,
         taxRate,
       });
+      if (!saleResult.ok) {
+        // The card charge above can succeed and then this step still fail (bad input, a network
+        // blip) - that's a real charge with nothing recorded, so this must never read as "try
+        // again" and invite a second charge for the same sale.
+        setSaleError(
+          chargedButUnrecorded
+            ? `${memberName}'s card was charged ${money(total)} but the sale failed to save: ${saleResult.error} Don't charge again — record this manually and check Clover's dashboard for the charge.`
+            : saleResult.error,
+        );
+        return;
+      }
+      const saleId = saleResult.data;
       chargedButUnrecorded = false;
       if (member) {
         const prebillItems = lines
@@ -206,14 +218,19 @@ function POSInner() {
             quantity: cart[p.id],
             coachId: p.coachId ?? memberCoachId,
           }));
-        if (prebillItems.length > 0) await createSessionCreditsForSale(saleId, member, prebillItems);
+        if (prebillItems.length > 0) {
+          const creditResult = await createSessionCreditsForSale(saleId, member, prebillItems);
+          if (!creditResult.ok) {
+            setSaleError(`Sale recorded, but session credits failed to apply: ${creditResult.error} Apply them manually from the member's profile.`);
+            return;
+          }
+        }
       }
       setCart({});
       router.push(`/invoices/${saleId}`);
     } catch {
-      // The card charge above can succeed and then this step still fail (network blip, etc.) -
-      // that's a real charge with nothing recorded, so this must never read as "try again" and
-      // invite a second charge for the same sale.
+      // A genuine unexpected failure (e.g. the request itself never reached the server) - same
+      // "don't charge again" safety net as above, just for a failure this code couldn't classify.
       setSaleError(
         chargedButUnrecorded
           ? `${memberName}'s card was charged ${money(total)} but the sale failed to save. Don't charge again — record this manually and check Clover's dashboard for the charge.`

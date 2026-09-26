@@ -55,7 +55,7 @@ export function CreateInvoiceDialog({ member, onClose }: { member: Member; onClo
 
     startTransition(async () => {
       try {
-        const id = await createSale({
+        const result = await createSale({
           memberId: member.id,
           coachId,
           summary,
@@ -66,8 +66,12 @@ export function CreateInvoiceDialog({ member, onClose }: { member: Member; onClo
           lineItems: parsed,
           taxRate,
         });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         onClose();
-        router.push(`/invoices/${id}`);
+        router.push(`/invoices/${result.data}`);
       } catch {
         setError("Couldn't create that invoice. Try again.");
       }

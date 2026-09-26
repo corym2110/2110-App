@@ -55,13 +55,28 @@ export async function GET(req: Request) {
 
     if (result.ok) {
       const monthLabel = new Date(`${member.nextBillDate}T00:00:00`).toLocaleDateString("en-CA", { month: "long", year: "numeric" });
-      await createSale({
+      const saleResult = await createSale({
         memberId: member.id,
         summary: `${member.membershipName} — ${monthLabel}`,
         total: Number(member.membershipPrice),
         method: "Card",
         paid: true,
       });
+      if (!saleResult.ok) {
+        // The card was already charged - this is the "charged but not recorded" edge case, not a
+        // normal billing failure. Flagged distinctly in lastBillError rather than silently marked
+        // "paid" with no Sale to show for it.
+        await db.member.update({
+          where: { id: member.id },
+          data: {
+            lastBillAt: new Date(),
+            lastBillStatus: "failed",
+            lastBillError: `Charged but not recorded: ${saleResult.error}`,
+          },
+        });
+        failed++;
+        continue;
+      }
       await db.member.update({
         where: { id: member.id },
         data: {

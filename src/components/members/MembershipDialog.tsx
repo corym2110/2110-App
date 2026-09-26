@@ -37,11 +37,15 @@ export function MembershipDialog({
     setError(null);
     startTransition(async () => {
       try {
-        await setMembership(memberId, { name: name.trim(), price: priceNumber, nextBillDate });
+        const result = await setMembership(memberId, { name: name.trim(), price: priceNumber, nextBillDate });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         onSaved();
         onClose();
-      } catch (e) {
-        setError(e instanceof Error && e.message ? e.message : "Couldn't save that membership.");
+      } catch {
+        setError("Couldn't save that membership. Try again.");
       }
     });
   }

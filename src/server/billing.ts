@@ -10,6 +10,7 @@ import { PREBILL_TYPES, type PreBillType } from "@/lib/prebill";
 import { addDays, isoOf } from "@/lib/time";
 import { parseInput } from "@/lib/validate";
 import { PreBillSaleItemsSchema } from "@/lib/schemas";
+import { runAction, type ActionResult } from "@/lib/actionResult";
 
 export type { PreBillType };
 
@@ -159,71 +160,73 @@ export async function createSessionCreditsForSale(
   saleId: string,
   memberId: string,
   items: { sessionType: PreBillType; unitPrice: number; quantity: number; coachId?: string }[],
-): Promise<void> {
-  const validItems = parseInput(PreBillSaleItemsSchema, items);
-  const relevant = validItems.filter((i) => PREBILL_TYPES.includes(i.sessionType));
-  if (relevant.length === 0) return;
-
-  const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
-  const name = fullName(member);
-  const todayIso = isoOf(new Date());
-  const horizonIso = isoOf(addDays(new Date(), 180));
-
-  const [byIso, existingCredits] = await Promise.all([
-    getOccurrencesForRange(todayIso, horizonIso),
-    db.sessionCredit.findMany({ where: { memberId, appliedOccurrenceKey: { not: null } }, select: { appliedOccurrenceKey: true } }),
-  ]);
-  const covered = new Set(existingCredits.map((c) => c.appliedOccurrenceKey));
-
-  const slotsByType = new Map<PreBillType, { key: string; coachId: string }[]>();
-  for (const occs of Object.values(byIso)) {
-    for (const occ of occs) {
-      const type = occ.type as PreBillType;
-      if (!PREBILL_TYPES.includes(type)) continue;
-      const involved = occ.roster && occ.roster.length > 0 ? occ.roster.includes(name) : occ.name === name;
-      if (!involved || covered.has(occ.key)) continue;
-      const list = slotsByType.get(type) ?? [];
-      list.push({ key: occ.key, coachId: occ.coach });
-      slotsByType.set(type, list);
-    }
-  }
-
-  // Only ever auto-apply a credit to a session taught by the same coach it was priced for — a
-  // client trained by two different coaches doing the same session type (different rates) must
-  // never have one coach's credit silently cover the other's session. No matching-coach slot
-  // yet on the calendar means the credit is created unapplied, same as genuine overflow.
-  function takeSlot(type: PreBillType, coachId?: string): { key: string; coachId: string } | undefined {
-    const list = slotsByType.get(type);
-    if (!list || list.length === 0) return undefined;
-    if (!coachId) return list.shift();
-    const idx = list.findIndex((s) => s.coachId === coachId);
-    return idx === -1 ? undefined : list.splice(idx, 1)[0];
-  }
-
-  await db.$transaction(async (tx) => {
-    for (const item of relevant) {
-      for (let i = 0; i < item.quantity; i++) {
-        const slot = takeSlot(item.sessionType, item.coachId);
-        await tx.sessionCredit.create({
-          data: {
-            saleId,
-            memberId,
-            sessionType: item.sessionType,
-            unitPrice: item.unitPrice,
-            // A credit is priced for a specific coach's rate, so it stays scoped to that coach —
-            // fall back to whichever coach the purchase was attributed to when there's no real
-            // upcoming occurrence yet to pin it to.
-            coachId: slot?.coachId ?? item.coachId ?? null,
-            appliedOccurrenceKey: slot?.key ?? null,
-            appliedIso: slot ? isoFromOccurrenceKey(slot.key) : null,
-          },
-        });
+): Promise<ActionResult> {
+  return runAction(async () => {
+    const validItems = parseInput(PreBillSaleItemsSchema, items);
+    const relevant = validItems.filter((i) => PREBILL_TYPES.includes(i.sessionType));
+    if (relevant.length === 0) return;
+  
+    const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
+    const name = fullName(member);
+    const todayIso = isoOf(new Date());
+    const horizonIso = isoOf(addDays(new Date(), 180));
+  
+    const [byIso, existingCredits] = await Promise.all([
+      getOccurrencesForRange(todayIso, horizonIso),
+      db.sessionCredit.findMany({ where: { memberId, appliedOccurrenceKey: { not: null } }, select: { appliedOccurrenceKey: true } }),
+    ]);
+    const covered = new Set(existingCredits.map((c) => c.appliedOccurrenceKey));
+  
+    const slotsByType = new Map<PreBillType, { key: string; coachId: string }[]>();
+    for (const occs of Object.values(byIso)) {
+      for (const occ of occs) {
+        const type = occ.type as PreBillType;
+        if (!PREBILL_TYPES.includes(type)) continue;
+        const involved = occ.roster && occ.roster.length > 0 ? occ.roster.includes(name) : occ.name === name;
+        if (!involved || covered.has(occ.key)) continue;
+        const list = slotsByType.get(type) ?? [];
+        list.push({ key: occ.key, coachId: occ.coach });
+        slotsByType.set(type, list);
       }
     }
+  
+    // Only ever auto-apply a credit to a session taught by the same coach it was priced for — a
+    // client trained by two different coaches doing the same session type (different rates) must
+    // never have one coach's credit silently cover the other's session. No matching-coach slot
+    // yet on the calendar means the credit is created unapplied, same as genuine overflow.
+    function takeSlot(type: PreBillType, coachId?: string): { key: string; coachId: string } | undefined {
+      const list = slotsByType.get(type);
+      if (!list || list.length === 0) return undefined;
+      if (!coachId) return list.shift();
+      const idx = list.findIndex((s) => s.coachId === coachId);
+      return idx === -1 ? undefined : list.splice(idx, 1)[0];
+    }
+  
+    await db.$transaction(async (tx) => {
+      for (const item of relevant) {
+        for (let i = 0; i < item.quantity; i++) {
+          const slot = takeSlot(item.sessionType, item.coachId);
+          await tx.sessionCredit.create({
+            data: {
+              saleId,
+              memberId,
+              sessionType: item.sessionType,
+              unitPrice: item.unitPrice,
+              // A credit is priced for a specific coach's rate, so it stays scoped to that coach —
+              // fall back to whichever coach the purchase was attributed to when there's no real
+              // upcoming occurrence yet to pin it to.
+              coachId: slot?.coachId ?? item.coachId ?? null,
+              appliedOccurrenceKey: slot?.key ?? null,
+              appliedIso: slot ? isoFromOccurrenceKey(slot.key) : null,
+            },
+          });
+        }
+      }
+    });
+  
+    revalidatePath(`/members/${memberId}`);
+    revalidatePath("/schedule");
   });
-
-  revalidatePath(`/members/${memberId}`);
-  revalidatePath("/schedule");
 }
 
 export interface SessionCreditRow {
@@ -297,20 +300,22 @@ export async function unapplyCredit(creditId: string): Promise<void> {
     override on top of the auto-assignment done at billing time. Refuses to double-cover a session
     that another credit *for the same member* already claims — scoped per member because one
     Group Training occurrence legitimately hosts a separate credit per attendee. */
-export async function applyCreditToOccurrence(creditId: string, occurrenceKey: string): Promise<void> {
-  const credit = await db.sessionCredit.findUniqueOrThrow({ where: { id: creditId } });
-  const clash = await db.sessionCredit.findFirst({
-    where: { appliedOccurrenceKey: occurrenceKey, memberId: credit.memberId, id: { not: creditId } },
-  });
-  if (clash) throw new Error("That session is already covered by a different credit.");
+export async function applyCreditToOccurrence(creditId: string, occurrenceKey: string): Promise<ActionResult> {
+  return runAction(async () => {
+    const credit = await db.sessionCredit.findUniqueOrThrow({ where: { id: creditId } });
+    const clash = await db.sessionCredit.findFirst({
+      where: { appliedOccurrenceKey: occurrenceKey, memberId: credit.memberId, id: { not: creditId } },
+    });
+    if (clash) throw new Error("That session is already covered by a different credit.");
 
-  await db.sessionCredit.update({
-    where: { id: creditId },
-    data: { appliedOccurrenceKey: occurrenceKey, appliedIso: isoFromOccurrenceKey(occurrenceKey) },
+    await db.sessionCredit.update({
+      where: { id: creditId },
+      data: { appliedOccurrenceKey: occurrenceKey, appliedIso: isoFromOccurrenceKey(occurrenceKey) },
+    });
+    revalidatePath(`/members/${credit.memberId}`);
+    revalidatePath("/schedule");
+    revalidatePath("/classes");
   });
-  revalidatePath(`/members/${credit.memberId}`);
-  revalidatePath("/schedule");
-  revalidatePath("/classes");
 }
 
 export interface CreditOption {

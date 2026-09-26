@@ -45,12 +45,15 @@ export function ProductDialog({
     };
     startTransition(async () => {
       try {
-        if (editing) await updateProduct(editing.id, input);
-        else await addProduct(input);
+        const result = editing ? await updateProduct(editing.id, input) : await addProduct(input);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         onSaved();
         onClose();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't save that product.");
+      } catch {
+        setError("Couldn't save that product. Try again.");
       }
     });
   }

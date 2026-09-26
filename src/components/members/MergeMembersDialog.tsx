@@ -78,7 +78,7 @@ export function MergeMembersDialog({ members, onClose }: { members: Member[]; on
 
     startTransition(async () => {
       try {
-        await mergeMembers({
+        const result = await mergeMembers({
           keepId: keep.id,
           removeId: remove.id,
           fields: {
@@ -96,11 +96,16 @@ export function MergeMembersDialog({ members, onClose }: { members: Member[]; on
             coachId,
           },
         });
+        if (!result.ok) {
+          setError(result.error);
+          setConfirming(false);
+          return;
+        }
         onClose();
         router.push(`/members/${keep.id}`);
         router.refresh();
-      } catch (e) {
-        setError(e instanceof Error && e.message ? e.message : "Couldn't merge those members.");
+      } catch {
+        setError("Couldn't merge those members. Try again.");
         setConfirming(false);
       }
     });

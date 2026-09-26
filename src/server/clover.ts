@@ -153,22 +153,26 @@ export async function chargeCardOnFile(
   currency = "CAD",
   idempotencyKey: string = randomUUID(),
 ): Promise<ChargeResult> {
-  const amount = parseInput(AmountCentsSchema, amountCents);
-  const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
-  if (!member.cloverCustomerId) return { ok: false, error: "No card on file for this member." };
+  try {
+    const amount = parseInput(AmountCentsSchema, amountCents);
+    const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
+    if (!member.cloverCustomerId) return { ok: false, error: "No card on file for this member." };
 
-  const res = await sclFetch(`/v1/charges`, {
-    method: "POST",
-    headers: { "idempotency-key": idempotencyKey },
-    body: JSON.stringify({
-      amount,
-      currency,
-      source: member.cloverCustomerId,
-      stored_credentials: { sequence: "SUBSEQUENT", is_scheduled: false, initiator: "MERCHANT" },
-    }),
-  });
+    const res = await sclFetch(`/v1/charges`, {
+      method: "POST",
+      headers: { "idempotency-key": idempotencyKey },
+      body: JSON.stringify({
+        amount,
+        currency,
+        source: member.cloverCustomerId,
+        stored_credentials: { sequence: "SUBSEQUENT", is_scheduled: false, initiator: "MERCHANT" },
+      }),
+    });
 
-  const data = await res.json().catch(() => null);
-  if (!res.ok) return { ok: false, error: data?.message ?? `Charge failed (${res.status}).` };
-  return { ok: true, chargeId: data.id };
+    const data = await res.json().catch(() => null);
+    if (!res.ok) return { ok: false, error: data?.message ?? `Charge failed (${res.status}).` };
+    return { ok: true, chargeId: data.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Unknown error charging the card." };
+  }
 }

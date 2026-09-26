@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { parseInput } from "@/lib/validate";
 import { ProductInputSchema, type ProductInput } from "@/lib/schemas";
+import { runAction, type ActionResult } from "@/lib/actionResult";
 import type { Product } from "@/types";
 
 export type { ProductInput };
@@ -37,42 +38,46 @@ export async function getProducts(): Promise<Product[]> {
   return rows.map(toProduct);
 }
 
-export async function addProduct(input: ProductInput): Promise<string> {
-  const data = parseInput(ProductInputSchema, input);
-  const row = await db.product.create({
-    data: {
-      name: data.name,
-      category: data.category,
-      price: data.price,
-      meta: data.meta,
-      recur: data.recur || null,
-      variablePrice: data.variablePrice ?? false,
-      sessionType: data.sessionType || null,
-      coachId: data.coachId || null,
-    },
+export async function addProduct(input: ProductInput): Promise<ActionResult<string>> {
+  return runAction(async () => {
+    const data = parseInput(ProductInputSchema, input);
+    const row = await db.product.create({
+      data: {
+        name: data.name,
+        category: data.category,
+        price: data.price,
+        meta: data.meta,
+        recur: data.recur || null,
+        variablePrice: data.variablePrice ?? false,
+        sessionType: data.sessionType || null,
+        coachId: data.coachId || null,
+      },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/pos");
+    return row.id;
   });
-  revalidatePath("/settings");
-  revalidatePath("/pos");
-  return row.id;
 }
 
-export async function updateProduct(id: string, input: ProductInput): Promise<void> {
-  const data = parseInput(ProductInputSchema, input);
-  await db.product.update({
-    where: { id },
-    data: {
-      name: data.name,
-      category: data.category,
-      price: data.price,
-      meta: data.meta,
-      recur: data.recur || null,
-      variablePrice: data.variablePrice ?? false,
-      sessionType: data.sessionType || null,
-      coachId: data.coachId || null,
-    },
+export async function updateProduct(id: string, input: ProductInput): Promise<ActionResult> {
+  return runAction(async () => {
+    const data = parseInput(ProductInputSchema, input);
+    await db.product.update({
+      where: { id },
+      data: {
+        name: data.name,
+        category: data.category,
+        price: data.price,
+        meta: data.meta,
+        recur: data.recur || null,
+        variablePrice: data.variablePrice ?? false,
+        sessionType: data.sessionType || null,
+        coachId: data.coachId || null,
+      },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/pos");
   });
-  revalidatePath("/settings");
-  revalidatePath("/pos");
 }
 
 /** Soft delete — keeps the row (and its price) intact for any historical Sale.lineItems that

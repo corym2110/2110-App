@@ -58,6 +58,7 @@ export function BookingDialog({
   const [time, setTime] = useState(editing?.start ?? start);
   const [client, setClient] = useState(editing?.name ?? "");
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const availByCoach = useAvailabilityForCoaches([coach]);
@@ -104,36 +105,48 @@ export function BookingDialog({
     if (!coach) return;
     if (!client.trim() && type !== "Group Training" && type !== "Class") return;
     if (recur && canRecur && selectedDays.length === 0) return;
+    setError(null);
 
     startTransition(async () => {
-      const capacity = selectedDef?.capacity ?? 0;
+      try {
+        const capacity = selectedDef?.capacity ?? 0;
 
-      if (editing) {
-        // Cancel the original (deletes a one-off booking outright, or excludes just this date
-        // from its recurring series) then create the edited version as a fresh one-off booking.
-        await cancelOccurrence(editing.sourceId, editing.key);
-        await addBooking({ iso: pickedIso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
+        if (editing) {
+          // Cancel the original (deletes a one-off booking outright, or excludes just this date
+          // from its recurring series) then create the edited version as a fresh one-off booking.
+          await cancelOccurrence(editing.sourceId, editing.key);
+          const result = await addBooking({ iso: pickedIso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
+          onSaved();
+          onClose();
+          return;
+        }
+
+        const result =
+          recur && canRecur
+            ? await addSeries({
+                clientName: client.trim(),
+                type,
+                capacity,
+                coachId: coach,
+                duration,
+                days: recurDays,
+                fromIso: pickedIso,
+                toIso: endMode === "weeks" ? isoOf(addDays(date, endWeeks * 7)) : undefined,
+              })
+            : await addBooking({ iso: pickedIso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         onSaved();
         onClose();
-        return;
+      } catch {
+        setError("Couldn't save that session. Try again.");
       }
-
-      if (recur && canRecur) {
-        await addSeries({
-          clientName: client.trim(),
-          type,
-          capacity,
-          coachId: coach,
-          duration,
-          days: recurDays,
-          fromIso: pickedIso,
-          toIso: endMode === "weeks" ? isoOf(addDays(date, endWeeks * 7)) : undefined,
-        });
-      } else {
-        await addBooking({ iso: pickedIso, start: time, duration, type, capacity, coachId: coach, name: client.trim() });
-      }
-      onSaved();
-      onClose();
     });
   }
 
@@ -319,6 +332,8 @@ export function BookingDialog({
             </div>
           </div>
         )}
+
+        {error && <div className="rounded-lg bg-bad/10 px-3 py-2.5 text-[12.5px] text-bad">{error}</div>}
 
         <div className="mt-1 flex items-center justify-between gap-2">
           {editing ? (

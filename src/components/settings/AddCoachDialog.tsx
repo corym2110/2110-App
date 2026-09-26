@@ -27,11 +27,15 @@ export function AddCoachDialog({ onClose, onAdded }: { onClose: () => void; onAd
     setError(null);
     startTransition(async () => {
       try {
-        await addCoach({ name, email, role });
+        const result = await addCoach({ name, email, role });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         onAdded();
         onClose();
-      } catch (e) {
-        setError(e instanceof Error && e.message ? e.message : "Couldn't add that coach — check the email isn't already in use.");
+      } catch {
+        setError("Couldn't add that coach — check the email isn't already in use.");
       }
     });
   }

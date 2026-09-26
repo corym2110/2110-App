@@ -44,12 +44,16 @@ export function SessionCreditsDialog({
     setError(null);
     startTransition(async () => {
       try {
-        await applyCreditToOccurrence(id, occurrenceKey);
+        const result = await applyCreditToOccurrence(id, occurrenceKey);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         setApplyingId(null);
         refetch();
         onChanged();
       } catch {
-        setError("That session is already covered by a different credit.");
+        setError("Couldn't apply that credit. Try again.");
       }
     });
   }

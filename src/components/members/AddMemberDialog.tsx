@@ -43,16 +43,24 @@ export function AddMemberDialog({ existing, onClose, onSaved }: { existing?: Mem
     startTransition(async () => {
       try {
         if (isEdit) {
-          await updateMemberDetails(existing.id, fields);
+          const result = await updateMemberDetails(existing.id, fields);
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
           onSaved?.();
           onClose();
         } else {
-          const id = await addMember(fields);
+          const result = await addMember(fields);
+          if (!result.ok) {
+            setError(result.error);
+            return;
+          }
           onClose();
-          router.push(`/members/${id}`);
+          router.push(`/members/${result.data}`);
         }
       } catch {
-        setError(isEdit ? "Couldn't save those changes — check the email isn't already in use." : "Couldn't add that member — check the email isn't already in use.");
+        setError(isEdit ? "Couldn't save those changes. Try again." : "Couldn't add that member. Try again.");
       }
     });
   }

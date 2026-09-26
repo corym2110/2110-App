@@ -46,6 +46,7 @@ const POLICIES: { name: string; blocks: WaiverBlock[] }[] = [
 export function SettingsClient() {
   const [tab, setTab] = useState<Tab>("Facility");
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isSaving, startSaving] = useTransition();
   const dark = useThemeStore((s) => s.theme === "dark");
   const { settings, refetch: refetchSettings } = useBusinessSettings();
@@ -76,11 +77,20 @@ export function SettingsClient() {
   const [, startProductAction] = useTransition();
 
   function saveChanges() {
+    setError(null);
     startSaving(async () => {
-      await saveBusinessSettings(values);
-      setOverride(null);
-      refetchSettings();
-      setSaved(true);
+      try {
+        const result = await saveBusinessSettings(values);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setOverride(null);
+        refetchSettings();
+        setSaved(true);
+      } catch {
+        setError("Couldn't save settings. Try again.");
+      }
     });
   }
 
@@ -96,6 +106,7 @@ export function SettingsClient() {
 
   return (
     <div className="flex flex-col gap-[18px]">
+      {error && <div className="rounded-lg bg-bad/10 px-3.5 py-2.5 text-[13px] text-bad">{error}</div>}
       <div className="flex flex-wrap items-end justify-between gap-5">
         <div>
           <h2 className="m-0 mb-0.5 text-[28px] font-medium tracking-tight">Settings</h2>
@@ -247,9 +258,18 @@ export function SettingsClient() {
                   onBlur={(e) => {
                     const pct = Number(e.target.value);
                     if (!(pct >= 0 && pct <= 100)) return;
+                    setError(null);
                     startSavingRate(async () => {
-                      await updateCoachCommissionRate(c.id, pct / 100);
-                      refetchCoaches();
+                      try {
+                        const result = await updateCoachCommissionRate(c.id, pct / 100);
+                        if (!result.ok) {
+                          setError(result.error);
+                          return;
+                        }
+                        refetchCoaches();
+                      } catch {
+                        setError("Couldn't save that commission rate. Try again.");
+                      }
                     });
                   }}
                   className="h-9 w-16 rounded-lg border border-divider bg-transparent px-2 text-right text-sm tabular-nums"

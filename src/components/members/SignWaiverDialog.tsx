@@ -99,7 +99,7 @@ export function SignWaiverDialog({ member, onClose, onSigned }: { member: Member
     setError(null);
     startTransition(async () => {
       try {
-        await signWaiver({
+        const result = await signWaiver({
           memberId: member.id,
           waiverType,
           signerName,
@@ -108,6 +108,10 @@ export function SignWaiverDialog({ member, onClose, onSigned }: { member: Member
           signatureDataUrl: signatureDataUrl!,
           signedByCoachId: coach?.id,
         });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         onSigned();
         onClose();
       } catch {

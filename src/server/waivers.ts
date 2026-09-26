@@ -5,6 +5,7 @@ import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
 import { parseInput } from "@/lib/validate";
 import { SignWaiverInputSchema, WaiverTypeSchema, type SignWaiverInput } from "@/lib/schemas";
+import { runAction, type ActionResult } from "@/lib/actionResult";
 import { ADULT_LIABILITY_WAIVER, ADULT_LIABILITY_WAIVER_VERSION, type WaiverBlock } from "@/data/waivers/adultLiabilityWaiver";
 import { YOUTH_WAIVER, YOUTH_WAIVER_VERSION } from "@/data/waivers/youthWaiver";
 import type { z } from "zod";
@@ -23,23 +24,25 @@ function renderSnapshot(blocks: WaiverBlock[], version: string): string {
   return `[Version ${version}]\n\n${body}`;
 }
 
-export async function signWaiver(input: SignWaiverInput): Promise<string> {
-  const data = parseInput(SignWaiverInputSchema, input);
-  const { blocks, version } = contentFor(data.waiverType);
-  const row = await db.waiverSignature.create({
-    data: {
-      memberId: data.memberId,
-      waiverType: data.waiverType,
-      contentSnapshot: renderSnapshot(blocks, version),
-      signerName: data.signerName,
-      minorName: data.minorName || undefined,
-      pickupNames: data.pickupNames ?? [],
-      signatureDataUrl: data.signatureDataUrl,
-      signedByCoachId: data.signedByCoachId || undefined,
-    },
+export async function signWaiver(input: SignWaiverInput): Promise<ActionResult<string>> {
+  return runAction(async () => {
+    const data = parseInput(SignWaiverInputSchema, input);
+    const { blocks, version } = contentFor(data.waiverType);
+    const row = await db.waiverSignature.create({
+      data: {
+        memberId: data.memberId,
+        waiverType: data.waiverType,
+        contentSnapshot: renderSnapshot(blocks, version),
+        signerName: data.signerName,
+        minorName: data.minorName || undefined,
+        pickupNames: data.pickupNames ?? [],
+        signatureDataUrl: data.signatureDataUrl,
+        signedByCoachId: data.signedByCoachId || undefined,
+      },
+    });
+    revalidatePath(`/members/${data.memberId}`);
+    return row.id;
   });
-  revalidatePath(`/members/${data.memberId}`);
-  return row.id;
 }
 
 export interface WaiverSummaryRow {
