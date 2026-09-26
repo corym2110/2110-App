@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
+import { parseInput } from "@/lib/validate";
+import { ProductInputSchema, type ProductInput } from "@/lib/schemas";
 import type { Product } from "@/types";
+
+export type { ProductInput };
 
 function toProduct(row: {
   id: string;
@@ -33,30 +37,18 @@ export async function getProducts(): Promise<Product[]> {
   return rows.map(toProduct);
 }
 
-export interface ProductInput {
-  name: string;
-  category: Product["category"];
-  price: number;
-  meta: string;
-  recur?: string;
-  variablePrice?: boolean;
-  sessionType?: string;
-  coachId?: string;
-}
-
 export async function addProduct(input: ProductInput): Promise<string> {
-  const name = input.name.trim();
-  if (!name) throw new Error("Name is required.");
+  const data = parseInput(ProductInputSchema, input);
   const row = await db.product.create({
     data: {
-      name,
-      category: input.category,
-      price: Math.max(0, input.price),
-      meta: input.meta.trim(),
-      recur: input.recur?.trim() || null,
-      variablePrice: input.variablePrice ?? false,
-      sessionType: input.sessionType || null,
-      coachId: input.coachId || null,
+      name: data.name,
+      category: data.category,
+      price: data.price,
+      meta: data.meta,
+      recur: data.recur || null,
+      variablePrice: data.variablePrice ?? false,
+      sessionType: data.sessionType || null,
+      coachId: data.coachId || null,
     },
   });
   revalidatePath("/settings");
@@ -65,19 +57,18 @@ export async function addProduct(input: ProductInput): Promise<string> {
 }
 
 export async function updateProduct(id: string, input: ProductInput): Promise<void> {
-  const name = input.name.trim();
-  if (!name) throw new Error("Name is required.");
+  const data = parseInput(ProductInputSchema, input);
   await db.product.update({
     where: { id },
     data: {
-      name,
-      category: input.category,
-      price: Math.max(0, input.price),
-      meta: input.meta.trim(),
-      recur: input.recur?.trim() || null,
-      variablePrice: input.variablePrice ?? false,
-      sessionType: input.sessionType || null,
-      coachId: input.coachId || null,
+      name: data.name,
+      category: data.category,
+      price: data.price,
+      meta: data.meta,
+      recur: data.recur || null,
+      variablePrice: data.variablePrice ?? false,
+      sessionType: data.sessionType || null,
+      coachId: data.coachId || null,
     },
   });
   revalidatePath("/settings");

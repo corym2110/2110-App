@@ -8,6 +8,7 @@ import { getBusinessSettings } from "./settings";
 import { sessionTypeByName } from "@/data/mock/sessionTypes";
 import { matchProduct } from "@/lib/matchProduct";
 import { getProducts } from "./products";
+import { parseInput, IsoDateSchema } from "@/lib/validate";
 import type { SessionTypeName } from "@/types";
 
 /** Personal Training / Group Training / Remote Consult / Blueprint and Baseline pay a
@@ -41,9 +42,11 @@ export interface CoachPayrollRow {
 export async function getPayrollForPeriod(periodFrom: string, periodTo: string): Promise<CoachPayrollRow[]> {
   const requester = await getCurrentCoach();
   if (!requester || !canViewFinancials(requester.role)) throw new Error("Only an Owner or GM can view payroll.");
+  const validFrom = parseInput(IsoDateSchema, periodFrom);
+  const validTo = parseInput(IsoDateSchema, periodTo);
 
   const [byIso, coaches, settings, products] = await Promise.all([
-    getOccurrencesForRange(periodFrom, periodTo),
+    getOccurrencesForRange(validFrom, validTo),
     db.coach.findMany({ orderBy: { name: "asc" } }),
     getBusinessSettings(),
     getProducts(),

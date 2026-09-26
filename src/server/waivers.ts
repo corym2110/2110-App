@@ -3,10 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
+import { parseInput } from "@/lib/validate";
+import { SignWaiverInputSchema, WaiverTypeSchema, type SignWaiverInput } from "@/lib/schemas";
 import { ADULT_LIABILITY_WAIVER, ADULT_LIABILITY_WAIVER_VERSION, type WaiverBlock } from "@/data/waivers/adultLiabilityWaiver";
 import { YOUTH_WAIVER, YOUTH_WAIVER_VERSION } from "@/data/waivers/youthWaiver";
+import type { z } from "zod";
 
-export type WaiverType = "Adult Liability Waiver" | "Youth Waiver";
+export type { SignWaiverInput };
+export type WaiverType = z.infer<typeof WaiverTypeSchema>;
 
 function contentFor(type: WaiverType): { blocks: WaiverBlock[]; version: string } {
   return type === "Adult Liability Waiver"
@@ -19,31 +23,22 @@ function renderSnapshot(blocks: WaiverBlock[], version: string): string {
   return `[Version ${version}]\n\n${body}`;
 }
 
-export interface SignWaiverInput {
-  memberId: string;
-  waiverType: WaiverType;
-  signerName: string;
-  minorName?: string;
-  pickupNames?: string[];
-  signatureDataUrl: string;
-  signedByCoachId?: string;
-}
-
 export async function signWaiver(input: SignWaiverInput): Promise<string> {
-  const { blocks, version } = contentFor(input.waiverType);
+  const data = parseInput(SignWaiverInputSchema, input);
+  const { blocks, version } = contentFor(data.waiverType);
   const row = await db.waiverSignature.create({
     data: {
-      memberId: input.memberId,
-      waiverType: input.waiverType,
+      memberId: data.memberId,
+      waiverType: data.waiverType,
       contentSnapshot: renderSnapshot(blocks, version),
-      signerName: input.signerName.trim(),
-      minorName: input.minorName?.trim() || undefined,
-      pickupNames: (input.pickupNames ?? []).map((n) => n.trim()).filter(Boolean),
-      signatureDataUrl: input.signatureDataUrl,
-      signedByCoachId: input.signedByCoachId || undefined,
+      signerName: data.signerName,
+      minorName: data.minorName || undefined,
+      pickupNames: data.pickupNames ?? [],
+      signatureDataUrl: data.signatureDataUrl,
+      signedByCoachId: data.signedByCoachId || undefined,
     },
   });
-  revalidatePath(`/members/${input.memberId}`);
+  revalidatePath(`/members/${data.memberId}`);
   return row.id;
 }
 

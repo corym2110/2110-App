@@ -8,6 +8,8 @@ import { matchProduct } from "@/lib/matchProduct";
 import { getProducts } from "./products";
 import { PREBILL_TYPES, type PreBillType } from "@/lib/prebill";
 import { addDays, isoOf } from "@/lib/time";
+import { parseInput } from "@/lib/validate";
+import { PreBillSaleItemsSchema } from "@/lib/schemas";
 
 export type { PreBillType };
 
@@ -158,7 +160,8 @@ export async function createSessionCreditsForSale(
   memberId: string,
   items: { sessionType: PreBillType; unitPrice: number; quantity: number; coachId?: string }[],
 ): Promise<void> {
-  const relevant = items.filter((i) => PREBILL_TYPES.includes(i.sessionType));
+  const validItems = parseInput(PreBillSaleItemsSchema, items);
+  const relevant = validItems.filter((i) => PREBILL_TYPES.includes(i.sessionType));
   if (relevant.length === 0) return;
 
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });

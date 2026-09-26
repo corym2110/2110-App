@@ -2,8 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
+import { parseInput } from "@/lib/validate";
+import { NewSessionTypeInputSchema, type NewSessionTypeInput } from "@/lib/schemas";
 import { SESSION_TYPES } from "@/data/mock/sessionTypes";
 import type { SessionTypeDef } from "@/types";
+
+export type { NewSessionTypeInput };
 
 /** Built-in types plus any custom ones an admin added, merged into one list for booking and display. */
 export async function getSessionTypes(): Promise<SessionTypeDef[]> {
@@ -11,28 +15,19 @@ export async function getSessionTypes(): Promise<SessionTypeDef[]> {
   return [...SESSION_TYPES, ...custom.map((c) => ({ name: c.name, duration: c.duration, capacity: c.capacity, recurring: c.recurring, price: c.price }))];
 }
 
-export interface NewSessionTypeInput {
-  name: string;
-  duration: number;
-  capacity: number;
-  price: number;
-  recurring: boolean;
-}
-
 export async function addSessionType(input: NewSessionTypeInput): Promise<string> {
-  const name = input.name.trim();
-  if (!name) throw new Error("Name is required.");
-  if (SESSION_TYPES.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+  const data = parseInput(NewSessionTypeInputSchema, input);
+  if (SESSION_TYPES.some((t) => t.name.toLowerCase() === data.name.toLowerCase())) {
     throw new Error("That name is already a built-in session type.");
   }
 
   const row = await db.sessionType.create({
     data: {
-      name,
-      duration: Math.max(5, Math.round(input.duration)),
-      capacity: Math.max(0, Math.round(input.capacity)),
-      price: Math.max(0, input.price),
-      recurring: input.recurring,
+      name: data.name,
+      duration: data.duration,
+      capacity: data.capacity,
+      price: data.price,
+      recurring: data.recurring,
     },
   });
   revalidatePath("/settings");

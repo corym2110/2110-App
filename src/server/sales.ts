@@ -6,48 +6,35 @@ import { getCurrentCoach } from "./coaches";
 import { getBusinessSettings } from "./settings";
 import { parseTaxRate } from "@/lib/tax";
 import { canViewFinancials } from "@/lib/roles";
+import { parseInput } from "@/lib/validate";
+import {
+  NewSaleInputSchema,
+  ReportRangeKeySchema,
+  DashboardRangeKeySchema,
+  type NewSaleInput,
+  type SaleLineItem,
+} from "@/lib/schemas";
 import { rangeStart, type ReportRangeKey } from "@/lib/reportRange";
 
-export type { ReportRangeKey };
-
-export interface SaleLineItem {
-  description: string;
-  quantity: number;
-  unitPrice: number;
-}
-
-export interface NewSaleInput {
-  memberId?: string;
-  coachId?: string;
-  summary: string;
-  /** Final amount actually charged, tax included — the single source of truth for what the customer paid. */
-  total: number;
-  method: string;
-  /** false = invoice the member now, pay later (adds to their balance due). */
-  paid: boolean;
-  /** What this bills for (e.g. "PT sessions Sep 1-15") — shown on the invoice. */
-  notes?: string;
-  lineItems?: SaleLineItem[];
-  /** Tax rate to snapshot on this sale (e.g. 0.05). Defaults to the current Settings tax rate when omitted. */
-  taxRate?: number;
-}
+export type { ReportRangeKey, NewSaleInput, SaleLineItem };
 
 export async function createSale(input: NewSaleInput): Promise<string> {
-  const taxRate = input.taxRate ?? parseTaxRate((await getBusinessSettings()).salesTax);
+  const data = parseInput(NewSaleInputSchema, input);
+  const taxRate = data.taxRate ?? parseTaxRate((await getBusinessSettings()).salesTax);
   const row = await db.sale.create({
     data: {
-      memberId: input.memberId || undefined,
-      coachId: input.coachId || undefined,
-      summary: input.summary,
-      total: input.total,
-      method: input.method,
-      paid: input.paid,
-      notes: input.notes?.trim() || undefined,
-      lineItems: input.lineItems ? (input.lineItems as object) : undefined,
+      memberId: data.memberId || undefined,
+      coachId: data.coachId || undefined,
+      summary: data.summary,
+      total: data.total,
+      method: data.method,
+      paid: data.paid,
+      notes: data.notes || undefined,
+      lineItems: data.lineItems ? (data.lineItems as object) : undefined,
       taxRate,
     },
   });
-  if (input.memberId) revalidatePath(`/members/${input.memberId}`);
+  if (data.memberId) revalidatePath(`/members/${data.memberId}`);
   revalidatePath("/members");
   revalidatePath("/reports");
   return row.id;
@@ -157,7 +144,8 @@ function dashboardRangeStart(range: DashboardRangeKey, now: Date): Date {
 
 /** Real revenue for the dashboard's Day/Week/Month toggle — a coach's own sales when coachId is given. */
 export async function getRevenueForRange(range: DashboardRangeKey, coachId?: string): Promise<{ revenue: number; saleCount: number }> {
-  const since = dashboardRangeStart(range, new Date());
+  const validRange = parseInput(DashboardRangeKeySchema, range);
+  const since = dashboardRangeStart(validRange, new Date());
   const sales = await db.sale.findMany({ where: { createdAt: { gte: since }, paid: true, ...(coachId ? { coachId } : {}) } });
   return { revenue: sales.reduce((a, s) => a + Number(s.total), 0), saleCount: sales.length };
 }
@@ -177,12 +165,13 @@ export interface RealReportsSummary {
     trusted on its own, since this is a directly-callable Server Action regardless of which page
     invoked it: a non-Owner/GM caller's scope is always forced to their own id here. */
 export async function getRealReportsSummary(range: ReportRangeKey, coachId?: string): Promise<RealReportsSummary> {
+  const validRange = parseInput(ReportRangeKeySchema, range);
   const requester = await getCurrentCoach();
   if (!requester) throw new Error("Not authenticated.");
   const scopedCoachId = canViewFinancials(requester.role) ? coachId : requester.id;
 
   const now = new Date();
-  const since = rangeStart(range, now);
+  const since = rangeStart(validRange, now);
 
   const [sales, newMembers, unpaid] = await Promise.all([
     db.sale.findMany({ where: { createdAt: { gte: since }, ...(scopedCoachId ? { coachId: scopedCoachId } : {}) }, include: { coach: true } }),
@@ -242,9 +231,10 @@ export interface SaleExportRow {
     they're Owner/GM (same boundary as Reports and Payroll), resolved from the session itself
     rather than trusted from the caller. */
 export async function getSalesRowsForRange(range: ReportRangeKey): Promise<SaleExportRow[]> {
+  const validRange = parseInput(ReportRangeKeySchema, range);
   const requester = await getCurrentCoach();
   const coachId = requester && canViewFinancials(requester.role) ? undefined : requester?.id;
-  const since = rangeStart(range, new Date());
+  const since = rangeStart(validRange, new Date());
   const rows = await db.sale.findMany({
     where: { createdAt: { gte: since }, ...(coachId ? { coachId } : {}) },
     include: { member: true, coach: true },

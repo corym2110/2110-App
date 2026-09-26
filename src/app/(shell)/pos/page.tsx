@@ -26,7 +26,7 @@ import { money } from "@/lib/time";
 import { PRODUCT_CATEGORIES, type Product } from "@/types";
 
 const CATEGORIES = PRODUCT_CATEGORIES;
-const PAYMENT_METHODS = ["Card", "Cash", "E-transfer", "Package credit"];
+const PAYMENT_METHODS = ["Card", "Cash", "E-transfer", "Package credit"] as const;
 
 function POSInner() {
   const router = useRouter();
@@ -88,7 +88,7 @@ function POSInner() {
   const [linked, setLinked] = useState<SharedAccountLink[]>([]);
   const [discMode, setDiscMode] = useState<"%" | "$">("%");
   const [discValue, setDiscValue] = useState("");
-  const [method, setMethod] = useState("Card");
+  const [method, setMethod] = useState<(typeof PAYMENT_METHODS)[number]>("Card");
   const [invoiceUnpaid, setInvoiceUnpaid] = useState(false);
   const [saleError, setSaleError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();

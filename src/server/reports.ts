@@ -4,6 +4,8 @@ import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
 import { getOccurrencesForRange } from "./schedule";
 import { canViewFinancials } from "@/lib/roles";
+import { parseInput } from "@/lib/validate";
+import { ReportRangeKeySchema } from "@/lib/schemas";
 import { rangeStart, type ReportRangeKey } from "@/lib/reportRange";
 import { isoOf, MONTHS } from "@/lib/time";
 
@@ -32,8 +34,9 @@ export interface RegistrationCohort {
 }
 
 export async function getRegistrationCohorts(range: ReportRangeKey, coachId?: string): Promise<RegistrationCohort[]> {
+  const validRange = parseInput(ReportRangeKeySchema, range);
   const scopedCoachId = await ownScopeOrRequested(coachId);
-  const since = rangeStart(range, new Date());
+  const since = rangeStart(validRange, new Date());
   const members = await db.member.findMany({
     where: { createdAt: { gte: since }, ...(scopedCoachId ? { coachId: scopedCoachId } : {}) },
     select: { createdAt: true },
@@ -63,8 +66,9 @@ export interface ClientSalesRow {
 }
 
 export async function getSalesSummaryByClient(range: ReportRangeKey, coachId?: string): Promise<ClientSalesRow[]> {
+  const validRange = parseInput(ReportRangeKeySchema, range);
   const scopedCoachId = await ownScopeOrRequested(coachId);
-  const since = rangeStart(range, new Date());
+  const since = rangeStart(validRange, new Date());
   const sales = await db.sale.findMany({
     where: { createdAt: { gte: since }, paid: true, memberId: { not: null }, ...(scopedCoachId ? { coachId: scopedCoachId } : {}) },
     include: { member: true },
@@ -94,8 +98,9 @@ export interface FirstVisitRow {
     range — mirrors the same name-matching approach getLastSessionByName already uses for "last
     session," just walking forward instead of back. */
 export async function getFirstVisits(range: ReportRangeKey, coachName?: string): Promise<FirstVisitRow[]> {
+  const validRange = parseInput(ReportRangeKeySchema, range);
   const scopedCoachName = await ownNameScopeOrRequested(coachName);
-  const since = rangeStart(range, new Date());
+  const since = rangeStart(validRange, new Date());
   const sinceIso = isoOf(since);
   const todayIso = isoOf(new Date());
 
@@ -140,7 +145,8 @@ export interface ClassUtilizationSummary {
 }
 
 export async function getClassUtilization(range: ReportRangeKey): Promise<ClassUtilizationSummary> {
-  const since = rangeStart(range, new Date());
+  const validRange = parseInput(ReportRangeKeySchema, range);
+  const since = rangeStart(validRange, new Date());
   const sinceIso = isoOf(since);
   const todayIso = isoOf(new Date());
   const byIso = await getOccurrencesForRange(sinceIso, todayIso);
@@ -185,7 +191,8 @@ export interface DailyAttendanceRow {
 }
 
 export async function getDailyAttendanceSummary(range: ReportRangeKey): Promise<DailyAttendanceRow[]> {
-  const since = rangeStart(range, new Date());
+  const validRange = parseInput(ReportRangeKeySchema, range);
+  const since = rangeStart(validRange, new Date());
   const sinceIso = isoOf(since);
   const todayIso = isoOf(new Date());
 

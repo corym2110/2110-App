@@ -5,7 +5,18 @@ import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
 import { getLastSessionByName } from "./schedule";
 import { clock, formatDateShort } from "@/lib/time";
+import { parseInput } from "@/lib/validate";
+import {
+  MemberDetailsInputSchema,
+  SetMembershipInputSchema,
+  MergeMembersInputSchema,
+  type NewMemberInput,
+  type MemberDetailsInput,
+  type MergeMembersInput,
+} from "@/lib/schemas";
 import type { Member } from "@/types";
+
+export type { NewMemberInput, MemberDetailsInput, MergeMembersInput };
 
 interface MemberRow {
   id: string;
@@ -88,50 +99,27 @@ export async function getMemberById(id: string): Promise<Member | null> {
 
 const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export interface NewMemberInput {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  gender: string;
-  address?: string;
-  postalCode?: string;
-  city?: string;
-  province?: string;
-  dateOfBirth?: string;
-  emergencyContactName?: string;
-  emergencyContactPhone?: string;
-  notes?: string;
-}
-
 export async function addMember(input: NewMemberInput): Promise<string> {
-  const firstName = input.firstName.trim();
-  const lastName = input.lastName.trim();
-  const email = input.email.trim();
-  const phone = input.phone.trim();
-  const gender = input.gender.trim();
-  if (!firstName || !lastName || !email || !phone || !gender) {
-    throw new Error("First name, last name, email, phone, and gender are required.");
-  }
+  const data = parseInput(MemberDetailsInputSchema, input);
 
   const coach = await db.coach.findFirst({ where: { active: true }, orderBy: { name: "asc" } });
   const now = new Date();
 
   const row = await db.member.create({
     data: {
-      firstName,
-      lastName,
-      email,
-      phone,
-      gender,
-      address: input.address?.trim() || undefined,
-      postalCode: input.postalCode?.trim() || undefined,
-      city: input.city?.trim() || undefined,
-      province: input.province?.trim() || undefined,
-      dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00Z`) : undefined,
-      emergencyContactName: input.emergencyContactName?.trim() || undefined,
-      emergencyContactPhone: input.emergencyContactPhone?.trim() || undefined,
-      notes: input.notes?.trim() || undefined,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      phone: data.phone,
+      gender: data.gender,
+      address: data.address || undefined,
+      postalCode: data.postalCode || undefined,
+      city: data.city || undefined,
+      province: data.province || undefined,
+      dateOfBirth: data.dateOfBirth ? new Date(`${data.dateOfBirth}T00:00:00Z`) : undefined,
+      emergencyContactName: data.emergencyContactName || undefined,
+      emergencyContactPhone: data.emergencyContactPhone || undefined,
+      notes: data.notes || undefined,
       plan: "No plan yet",
       since: `${MONTHS_SHORT[now.getMonth()]} ${now.getFullYear()}`,
       coachId: coach?.id,
@@ -142,48 +130,25 @@ export async function addMember(input: NewMemberInput): Promise<string> {
   return row.id;
 }
 
-export interface MemberDetailsInput {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  gender: string;
-  address?: string;
-  postalCode?: string;
-  city?: string;
-  province?: string;
-  dateOfBirth?: string;
-  emergencyContactName?: string;
-  emergencyContactPhone?: string;
-  notes?: string;
-}
-
 export async function updateMemberDetails(memberId: string, input: MemberDetailsInput): Promise<void> {
-  const firstName = input.firstName.trim();
-  const lastName = input.lastName.trim();
-  const email = input.email.trim();
-  const phone = input.phone.trim();
-  const gender = input.gender.trim();
-  if (!firstName || !lastName || !email || !phone || !gender) {
-    throw new Error("First name, last name, email, phone, and gender are required.");
-  }
+  const data = parseInput(MemberDetailsInputSchema, input);
 
   await db.member.update({
     where: { id: memberId },
     data: {
-      firstName,
-      lastName,
-      email,
-      phone,
-      gender,
-      address: input.address?.trim() || null,
-      postalCode: input.postalCode?.trim() || null,
-      city: input.city?.trim() || null,
-      province: input.province?.trim() || null,
-      dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00Z`) : null,
-      emergencyContactName: input.emergencyContactName?.trim() || null,
-      emergencyContactPhone: input.emergencyContactPhone?.trim() || null,
-      notes: input.notes?.trim() || null,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      email: data.email,
+      phone: data.phone,
+      gender: data.gender,
+      address: data.address || null,
+      postalCode: data.postalCode || null,
+      city: data.city || null,
+      province: data.province || null,
+      dateOfBirth: data.dateOfBirth ? new Date(`${data.dateOfBirth}T00:00:00Z`) : null,
+      emergencyContactName: data.emergencyContactName || null,
+      emergencyContactPhone: data.emergencyContactPhone || null,
+      notes: data.notes || null,
     },
   });
 
@@ -231,18 +196,15 @@ export async function getMembershipInfo(memberId: string): Promise<MembershipInf
     `nextBillDate`. Resets the failure counter/status so editing a plan after a "failed" state
     (e.g. staff fixed the card) puts it straight back to actively retrying. */
 export async function setMembership(memberId: string, input: { name: string; price: number; nextBillDate: string }): Promise<void> {
-  const name = input.name.trim();
-  if (!name) throw new Error("Membership name is required.");
-  if (!(input.price > 0)) throw new Error("Membership price must be greater than 0.");
-  if (!input.nextBillDate) throw new Error("Next bill date is required.");
+  const data = parseInput(SetMembershipInputSchema, input);
 
   await db.member.update({
     where: { id: memberId },
     data: {
-      membershipName: name,
-      membershipPrice: input.price,
+      membershipName: data.name,
+      membershipPrice: data.price,
       membershipStatus: "active",
-      nextBillDate: input.nextBillDate,
+      nextBillDate: data.nextBillDate,
       billFailCount: 0,
       lastBillError: null,
     },
@@ -300,28 +262,6 @@ export async function removeSharedAccount(payerId: string, beneficiaryId: string
   revalidatePath(`/members/${payerId}`);
 }
 
-export interface MergeMembersInput {
-  /** The record that survives — its id stays the same, so existing links (e.g. POS/profile URLs) still work. */
-  keepId: string;
-  /** The duplicate being merged in and deleted. */
-  removeId: string;
-  /** Final field values for the surviving record — the dialog lets the admin pick each from either duplicate. */
-  fields: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-    gender: string;
-    address?: string;
-    postalCode?: string;
-    city?: string;
-    province?: string;
-    plan: string;
-    since: string;
-    coachId?: string;
-  };
-}
-
 /**
  * Merges two duplicate member records. Sales and shared-account links move to the surviving
  * record by foreign key. Scheduling data (bookings, recurring series, waitlists, class add-ins,
@@ -331,16 +271,17 @@ export interface MergeMembersInput {
 export async function mergeMembers(input: MergeMembersInput): Promise<void> {
   const requester = await getCurrentCoach();
   if (!requester?.isAdmin) throw new Error("Only an admin can merge members.");
-  if (input.keepId === input.removeId) throw new Error("Pick two different members.");
+  const parsed = parseInput(MergeMembersInputSchema, input);
+  if (parsed.keepId === parsed.removeId) throw new Error("Pick two different members.");
 
   const [keep, remove] = await Promise.all([
-    db.member.findUniqueOrThrow({ where: { id: input.keepId } }),
-    db.member.findUniqueOrThrow({ where: { id: input.removeId } }),
+    db.member.findUniqueOrThrow({ where: { id: parsed.keepId } }),
+    db.member.findUniqueOrThrow({ where: { id: parsed.removeId } }),
   ]);
 
   const oldKeepName = fullName(keep);
   const oldRemoveName = fullName(remove);
-  const newName = `${input.fields.firstName} ${input.fields.lastName}`.trim();
+  const newName = `${parsed.fields.firstName} ${parsed.fields.lastName}`.trim();
   const oldNames = [...new Set([oldKeepName, oldRemoveName])].filter((n) => n && n !== newName);
 
   await db.$transaction(async (tx) => {
@@ -412,23 +353,23 @@ export async function mergeMembers(input: MergeMembersInput): Promise<void> {
     await tx.member.update({
       where: { id: keep.id },
       data: {
-        firstName: input.fields.firstName,
-        lastName: input.fields.lastName,
-        email: input.fields.email,
-        phone: input.fields.phone,
-        gender: input.fields.gender,
-        address: input.fields.address,
-        postalCode: input.fields.postalCode,
-        city: input.fields.city,
-        province: input.fields.province,
+        firstName: parsed.fields.firstName,
+        lastName: parsed.fields.lastName,
+        email: parsed.fields.email,
+        phone: parsed.fields.phone,
+        gender: parsed.fields.gender,
+        address: parsed.fields.address,
+        postalCode: parsed.fields.postalCode,
+        city: parsed.fields.city,
+        province: parsed.fields.province,
         // Not dialog-pickable — the two duplicates are the same real person, so just keep
         // whichever record already has each value set, preferring the survivor's.
         dateOfBirth: keep.dateOfBirth ?? remove.dateOfBirth,
         emergencyContactName: keep.emergencyContactName ?? remove.emergencyContactName,
         emergencyContactPhone: keep.emergencyContactPhone ?? remove.emergencyContactPhone,
-        plan: input.fields.plan,
-        since: input.fields.since,
-        coachId: input.fields.coachId,
+        plan: parsed.fields.plan,
+        since: parsed.fields.since,
+        coachId: parsed.fields.coachId,
       },
     });
   });

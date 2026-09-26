@@ -2,6 +2,10 @@
 
 import { randomUUID } from "crypto";
 import { db } from "./db";
+import { parseInput } from "@/lib/validate";
+import { TokenizedCardSummarySchema, AmountCentsSchema, type TokenizedCardSummary } from "@/lib/schemas";
+
+export type { TokenizedCardSummary };
 
 /** Sandbox hosts today; swapping CLOVER_ENV to "production" later is enough to point this whole
     module at the real API — the request shapes are identical between environments. */
@@ -51,16 +55,6 @@ export interface SaveCardResult {
   error?: string;
 }
 
-/** The card summary as reported by Clover.js's `createToken()` on the client — the browser has
-    this from the raw card entry, before it's ever tokenized, so it's the one place brand/last4/
-    expiry are actually available (Clover's server-side customer API never returns them). */
-export interface TokenizedCardSummary {
-  brand: string;
-  last4: string;
-  expMonth: string;
-  expYear: string;
-}
-
 /** Clover allows only one card on file per customer — replacing it 409s ("Customer already has
     Card on File or ACH on File") unless the old one is revoked first. */
 async function revokeCard(customerId: string, cardId: string): Promise<void> {
@@ -77,6 +71,7 @@ async function revokeCard(customerId: string, cardId: string): Promise<void> {
     is what gets displayed — captured client-side, since Clover's own response has no card
     details in it (see extractCardId above). */
 export async function saveCardForMember(memberId: string, cardToken: string, cardSummary: TokenizedCardSummary): Promise<SaveCardResult> {
+  const summary = parseInput(TokenizedCardSummarySchema, cardSummary);
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
 
   try {
@@ -106,7 +101,7 @@ export async function saveCardForMember(memberId: string, cardToken: string, car
     }
     const data = await res.json();
     const cardId = extractCardId(data);
-    const card: CloverCard = { id: cardId ?? "", ...cardSummary };
+    const card: CloverCard = { id: cardId ?? "", ...summary };
 
     await db.member.update({
       where: { id: memberId },
@@ -158,6 +153,7 @@ export async function chargeCardOnFile(
   currency = "CAD",
   idempotencyKey: string = randomUUID(),
 ): Promise<ChargeResult> {
+  const amount = parseInput(AmountCentsSchema, amountCents);
   const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
   if (!member.cloverCustomerId) return { ok: false, error: "No card on file for this member." };
 
@@ -165,7 +161,7 @@ export async function chargeCardOnFile(
     method: "POST",
     headers: { "idempotency-key": idempotencyKey },
     body: JSON.stringify({
-      amount: amountCents,
+      amount,
       currency,
       source: member.cloverCustomerId,
       stored_credentials: { sequence: "SUBSEQUENT", is_scheduled: false, initiator: "MERCHANT" },

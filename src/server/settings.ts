@@ -3,29 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
+import { parseInput } from "@/lib/validate";
+import { BusinessSettingsDTOSchema, type BusinessSettingsDTO } from "@/lib/schemas";
+
+export type { BusinessSettingsDTO };
 
 const SINGLETON_ID = "singleton";
-
-export interface BusinessSettingsDTO {
-  businessName: string;
-  address: string;
-  phone: string;
-  timezone: string;
-  opens: string;
-  closes: string;
-  bookingIncrement: string;
-  calendarView: string;
-  bookingFlags: { selfBook: boolean; waitlist: boolean; requireCard: boolean };
-  currency: string;
-  salesTax: string;
-  /** Flat payroll rate for Bodpod / Class (and any custom session type) hours. */
-  hourlyPayRate: number;
-  paymentsFlags: { emailReceipt: boolean; autoCharge: boolean; packageAlert: boolean; dailySummary: boolean };
-  notifyFlags: { reminder: boolean; cancelNotice: boolean; waitlistOpen: boolean; birthday: boolean; marketing: boolean };
-  reminderTiming: string;
-  packageWarning: string;
-  dailySummaryTo: string;
-}
 
 export async function getBusinessSettings(): Promise<BusinessSettingsDTO> {
   const row = await db.businessSettings.upsert({
@@ -60,7 +43,8 @@ export async function saveBusinessSettings(input: BusinessSettingsDTO): Promise<
   const requester = await getCurrentCoach();
   if (!requester?.isAdmin) throw new Error("Only an admin can change business settings.");
 
-  const data = { ...input, bookingFlags: input.bookingFlags as object, paymentsFlags: input.paymentsFlags as object, notifyFlags: input.notifyFlags as object };
+  const parsed = parseInput(BusinessSettingsDTOSchema, input);
+  const data = { ...parsed, bookingFlags: parsed.bookingFlags as object, paymentsFlags: parsed.paymentsFlags as object, notifyFlags: parsed.notifyFlags as object };
   await db.businessSettings.upsert({
     where: { id: SINGLETON_ID },
     create: { id: SINGLETON_ID, ...data },

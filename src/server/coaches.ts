@@ -4,7 +4,10 @@ import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { db } from "./db";
-import { COACH_ROLES, type CoachRole } from "@/lib/roles";
+import { parseInput } from "@/lib/validate";
+import { NewCoachInputSchema, CoachPreferencesInputSchema, CommissionRateSchema, type NewCoachInput, type CoachPreferencesInput } from "@/lib/schemas";
+
+export type { NewCoachInput, CoachPreferencesInput };
 
 export interface CoachRow {
   id: string;
@@ -52,12 +55,6 @@ export async function getCurrentCoach(): Promise<CoachRow | null> {
   return row ? toCoachRow(row) : null;
 }
 
-export interface NewCoachInput {
-  name: string;
-  email: string;
-  role: CoachRole;
-}
-
 /** Absolute origin of the request (works in dev, previews, and prod) so the invite email links back here. */
 async function currentOrigin(): Promise<string> {
   const h = await headers();
@@ -70,37 +67,29 @@ export async function addCoach(input: NewCoachInput): Promise<string> {
   const requester = await getCurrentCoach();
   if (!requester?.isAdmin) throw new Error("Only an admin can add a coach.");
 
-  const name = input.name.trim();
-  const email = input.email.trim();
-  if (!name || !email) throw new Error("Name and email are required.");
-  if (!COACH_ROLES.includes(input.role)) throw new Error("Invalid role.");
-  const isAdmin = input.role !== "Coach";
+  const data = parseInput(NewCoachInputSchema, input);
+  const isAdmin = data.role !== "Coach";
 
   // Send the invite first — if Clerk rejects it (bad address, already invited), nothing is
   // written to our own database, so a failed invite never leaves an orphaned coach record.
   const client = await clerkClient();
   await client.invitations.createInvitation({
-    emailAddress: email,
+    emailAddress: data.email,
     redirectUrl: `${await currentOrigin()}/sign-up`,
     publicMetadata: { role: isAdmin ? "admin" : "coach" },
   });
 
-  const row = await db.coach.create({ data: { name, email, role: input.role, active: true, isAdmin } });
+  const row = await db.coach.create({ data: { name: data.name, email: data.email, role: data.role, active: true, isAdmin } });
   revalidatePath("/settings");
   revalidatePath("/schedule");
   return row.id;
 }
 
-export interface CoachPreferencesInput {
-  notifyFlags: { dayAhead: boolean; manualBooking: boolean; classJoin: boolean };
-  landing: string;
-  calendarView: string;
-}
-
 export async function updateCoachPreferences(coachId: string, input: CoachPreferencesInput): Promise<void> {
+  const data = parseInput(CoachPreferencesInputSchema, input);
   await db.coach.update({
     where: { id: coachId },
-    data: { notifyFlags: input.notifyFlags as object, landing: input.landing, calendarView: input.calendarView },
+    data: { notifyFlags: data.notifyFlags as object, landing: data.landing, calendarView: data.calendarView },
   });
   revalidatePath("/preferences");
 }
@@ -109,9 +98,9 @@ export async function updateCoachPreferences(coachId: string, input: CoachPrefer
 export async function updateCoachCommissionRate(coachId: string, rate: number): Promise<void> {
   const requester = await getCurrentCoach();
   if (!requester?.isAdmin) throw new Error("Only an admin can set a coach's commission rate.");
-  if (!(rate >= 0 && rate <= 1)) throw new Error("Commission rate must be between 0% and 100%.");
+  const validRate = parseInput(CommissionRateSchema, rate);
 
-  await db.coach.update({ where: { id: coachId }, data: { commissionRate: rate } });
+  await db.coach.update({ where: { id: coachId }, data: { commissionRate: validRate } });
   revalidatePath("/settings");
   revalidatePath("/payroll");
 }

@@ -3,7 +3,27 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { addDays, dowIndex, DOW_LABELS, isoOf, minutesUntil, slotKey } from "@/lib/time";
+import { parseInput, IsoDateSchema } from "@/lib/validate";
+import {
+  NewBookingInputSchema,
+  BookingPatchSchema,
+  NewSeriesInputSchema,
+  MoveOccurrenceOccSchema,
+  AttendanceStatusSchema,
+  WeeklyHoursSchema,
+  TimeOffEntrySchema,
+  MinuteSchema,
+  OccurrenceKeySchema,
+  MemberNameSchema,
+  type NewBookingInput,
+  type NewSeriesInput,
+  type WeeklyHours,
+  type Shift,
+  type DayHoursDTO,
+} from "@/lib/schemas";
 import type { CoachId, DayOfWeek, SessionTypeName, TimeOffEntry } from "@/types";
+
+export type { NewBookingInput, NewSeriesInput, WeeklyHours, Shift, DayHoursDTO };
 
 export interface Occurrence {
   /** Stable per-(source, date) key — used for attendance, waitlists, cancel/move. */
@@ -142,28 +162,18 @@ export async function getLastSessionByName(names: string[]): Promise<Record<stri
   return result;
 }
 
-export interface NewBookingInput {
-  iso: string;
-  start: number;
-  duration: number;
-  type: SessionTypeName;
-  capacity?: number;
-  coachId: string;
-  name: string;
-  roster?: string[];
-}
-
 export async function addBooking(input: NewBookingInput): Promise<string> {
+  const data = parseInput(NewBookingInputSchema, input);
   const row = await db.booking.create({
     data: {
-      iso: input.iso,
-      start: input.start,
-      duration: input.duration,
-      type: input.type,
-      capacity: input.capacity ?? 0,
-      coachId: input.coachId,
-      name: input.name,
-      roster: input.roster ?? [],
+      iso: data.iso,
+      start: data.start,
+      duration: data.duration,
+      type: data.type,
+      capacity: data.capacity ?? 0,
+      coachId: data.coachId,
+      name: data.name,
+      roster: data.roster ?? [],
     },
   });
   afterSchedule();
@@ -171,32 +181,23 @@ export async function addBooking(input: NewBookingInput): Promise<string> {
 }
 
 export async function updateBooking(id: string, patch: Partial<NewBookingInput>): Promise<void> {
-  await db.booking.update({ where: { id }, data: patch });
+  const data = parseInput(BookingPatchSchema, patch);
+  await db.booking.update({ where: { id }, data });
   afterSchedule();
 }
 
-export interface NewSeriesInput {
-  clientName: string;
-  type: SessionTypeName;
-  capacity?: number;
-  coachId: string;
-  duration: number;
-  days: Partial<Record<DayOfWeek, number>>;
-  fromIso: string;
-  toIso?: string;
-}
-
 export async function addSeries(input: NewSeriesInput): Promise<string> {
+  const data = parseInput(NewSeriesInputSchema, input);
   const row = await db.recurringSeries.create({
     data: {
-      clientName: input.clientName,
-      type: input.type,
-      capacity: input.capacity ?? 0,
-      coachId: input.coachId,
-      duration: input.duration,
-      days: input.days,
-      fromIso: input.fromIso,
-      toIso: input.toIso,
+      clientName: data.clientName,
+      type: data.type,
+      capacity: data.capacity ?? 0,
+      coachId: data.coachId,
+      duration: data.duration,
+      days: data.days,
+      fromIso: data.fromIso,
+      toIso: data.toIso,
     },
   });
   afterSchedule();
@@ -230,11 +231,15 @@ export async function cancelOccurrence(sourceId: string, key: string): Promise<v
     new one — the common shape of an early-cancel-with-rollover is a drag-to-reschedule, and the
     money already collected for that slot should keep paying for it at its new time. */
 export async function moveOccurrence(
-  occ: { sourceId: string; key: string; type: SessionTypeName; duration: number; capacity: number; name: string; roster?: string[] },
-  targetIso: string,
-  targetStart: number,
+  occInput: { sourceId: string; key: string; type: SessionTypeName; duration: number; capacity: number; name: string; roster?: string[] },
+  targetIsoInput: string,
+  targetStartInput: number,
   targetCoachId?: string,
 ): Promise<void> {
+  const occ = parseInput(MoveOccurrenceOccSchema, occInput);
+  const targetIso = parseInput(IsoDateSchema, targetIsoInput);
+  const targetStart = parseInput(MinuteSchema, targetStartInput);
+
   const booking = await db.booking.findUnique({ where: { id: occ.sourceId } });
   let newKey = occ.key;
   if (booking) {
@@ -277,13 +282,15 @@ export async function getAttendanceForRange(fromIso: string, toIso: string): Pro
 }
 
 export async function setAttendanceStatus(slotKey: string, iso: string, status: string | null): Promise<void> {
-  if (status == null) {
+  const validIso = parseInput(IsoDateSchema, iso);
+  const validStatus = parseInput(AttendanceStatusSchema, status);
+  if (validStatus == null) {
     await db.attendanceRecord.deleteMany({ where: { slotKey } });
   } else {
     await db.attendanceRecord.upsert({
       where: { slotKey },
-      create: { slotKey, iso, status },
-      update: { status },
+      create: { slotKey, iso: validIso, status: validStatus },
+      update: { status: validStatus },
     });
   }
   afterSchedule();
@@ -307,25 +314,31 @@ export async function getWaitlistDataForRange(
 }
 
 export async function addToWaitlist(occurrenceKey: string, memberName: string): Promise<void> {
-  const iso = occurrenceKey.slice(occurrenceKey.lastIndexOf("@") + 1);
+  const key = parseInput(OccurrenceKeySchema, occurrenceKey);
+  const name = parseInput(MemberNameSchema, memberName);
+  const iso = key.slice(key.lastIndexOf("@") + 1);
   await db.waitlistEntry.upsert({
-    where: { occurrenceKey_memberName: { occurrenceKey, memberName } },
-    create: { occurrenceKey, iso, memberName },
+    where: { occurrenceKey_memberName: { occurrenceKey: key, memberName: name } },
+    create: { occurrenceKey: key, iso, memberName: name },
     update: {},
   });
   afterSchedule();
 }
 
 export async function removeFromWaitlist(occurrenceKey: string, memberName: string): Promise<void> {
-  await db.waitlistEntry.deleteMany({ where: { occurrenceKey, memberName } });
+  const key = parseInput(OccurrenceKeySchema, occurrenceKey);
+  const name = parseInput(MemberNameSchema, memberName);
+  await db.waitlistEntry.deleteMany({ where: { occurrenceKey: key, memberName: name } });
   afterSchedule();
 }
 
 export async function addToClass(occurrenceKey: string, memberName: string): Promise<void> {
-  const iso = occurrenceKey.slice(occurrenceKey.lastIndexOf("@") + 1);
+  const key = parseInput(OccurrenceKeySchema, occurrenceKey);
+  const name = parseInput(MemberNameSchema, memberName);
+  const iso = key.slice(key.lastIndexOf("@") + 1);
   await db.classAddIn.upsert({
-    where: { occurrenceKey_memberName: { occurrenceKey, memberName } },
-    create: { occurrenceKey, iso, memberName },
+    where: { occurrenceKey_memberName: { occurrenceKey: key, memberName: name } },
+    create: { occurrenceKey: key, iso, memberName: name },
     update: {},
   });
   afterSchedule();
@@ -347,12 +360,17 @@ export async function promoteFromWaitlist(occurrenceKey: string, memberName: str
         longest-waiting person on the waitlist is promoted into the newly-open spot; within 30
         minutes there's no realistic way anyone could arrive in time, so no one is bumped. */
 export async function cancelRosterMember(
-  occurrenceKey: string,
-  memberName: string,
-  iso: string,
-  start: number,
+  occurrenceKeyInput: string,
+  memberNameInput: string,
+  isoInput: string,
+  startInput: number,
   coachId: string,
 ): Promise<{ outcome: "removed" | "late-cancel"; promoted: string | null }> {
+  const occurrenceKey = parseInput(OccurrenceKeySchema, occurrenceKeyInput);
+  const memberName = parseInput(MemberNameSchema, memberNameInput);
+  const iso = parseInput(IsoDateSchema, isoInput);
+  const start = parseInput(MinuteSchema, startInput);
+
   const minutesUntilStart = minutesUntil(iso, start);
 
   let outcome: "removed" | "late-cancel";
@@ -382,16 +400,6 @@ export async function cancelRosterMember(
 }
 
 // --- Coach availability ---
-
-export interface Shift {
-  start: number;
-  end: number;
-}
-export interface DayHoursDTO {
-  on: boolean;
-  shifts: Shift[];
-}
-export type WeeklyHours = Record<DayOfWeek, DayHoursDTO>;
 
 const EMPTY_WEEKLY_HOURS: WeeklyHours = {
   Mon: { on: false, shifts: [] },
@@ -439,13 +447,15 @@ export async function getCoachAvailability(coachId: string): Promise<CoachAvaila
 }
 
 export async function setWeeklyHours(coachId: string, hours: WeeklyHours): Promise<void> {
-  await db.coach.update({ where: { id: coachId }, data: { weeklyHours: hours as object } });
+  const data = parseInput(WeeklyHoursSchema, hours);
+  await db.coach.update({ where: { id: coachId }, data: { weeklyHours: data as object } });
   revalidatePath("/preferences");
   revalidatePath("/schedule");
 }
 
 export async function addTimeOff(coachId: string, entry: TimeOffEntry): Promise<void> {
-  await db.timeOff.create({ data: { coachId, fromIso: entry.from, toIso: entry.to, reason: entry.reason, type: entry.type } });
+  const data = parseInput(TimeOffEntrySchema, entry);
+  await db.timeOff.create({ data: { coachId, fromIso: data.from, toIso: data.to, reason: data.reason, type: data.type } });
   revalidatePath("/preferences");
   revalidatePath("/schedule");
 }
