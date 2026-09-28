@@ -12,8 +12,8 @@ import { AddMemberDialog } from "@/components/members/AddMemberDialog";
 import { MergeMembersDialog } from "@/components/members/MergeMembersDialog";
 import type { Member } from "@/types";
 
-type Filter = "All" | "Balance due" | "Packages" | "Memberships";
-const FILTERS: Filter[] = ["All", "Balance due", "Packages", "Memberships"];
+type Filter = "All" | "Balance due" | "Packages" | "Memberships" | "At risk";
+const FILTERS: Filter[] = ["All", "Balance due", "Packages", "Memberships", "At risk"];
 const PAGE_SIZE = 10;
 
 export function MembersList({ members }: { members: Member[] }) {
@@ -46,6 +46,7 @@ export function MembersList({ members }: { members: Member[] }) {
     if (filter === "Balance due") return m.balance > 0;
     if (filter === "Packages") return m.plan.includes("pack");
     if (filter === "Memberships") return m.plan.includes("membership") || m.plan.includes("Remote");
+    if (filter === "At risk") return m.riskReasons.length > 0;
     return true;
   });
 
@@ -114,7 +115,17 @@ export function MembersList({ members }: { members: Member[] }) {
                 {initialsOf(m.name)}
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-[14.5px] font-medium">{m.name}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-[14.5px] font-medium">{m.name}</span>
+                  {m.riskReasons.length > 0 && (
+                    <span
+                      title={m.riskReasons.join(" ")}
+                      className="flex-none rounded-full bg-bad/10 px-2 py-0.5 text-[11px] font-medium text-bad"
+                    >
+                      At risk
+                    </span>
+                  )}
+                </span>
                 <span className="block truncate text-xs text-muted">{m.email}</span>
               </span>
             </span>

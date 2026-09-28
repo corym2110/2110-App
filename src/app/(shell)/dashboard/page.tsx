@@ -93,6 +93,8 @@ export default function DashboardPage() {
     .sort((a, b) => b.balance - a.balance);
   const outstandingBalance = balanceDue.reduce((a, m) => a + m.balance, 0);
 
+  const atRisk = members.filter((m) => m.riskReasons.length > 0 && (isAdmin || m.coach === coach?.name));
+
   const myClients = members.filter((m) => isAdmin || m.coach === coach?.name);
   const birthdays = upcomingBirthdays(myClients, 14, today);
 
@@ -219,6 +221,20 @@ export default function DashboardPage() {
             </Link>
           ))}
           {balanceDue.length === 0 && <div className="text-[13px] text-muted">Nothing needs attention right now.</div>}
+        </Card>
+
+        <Card className="flex flex-col gap-3 px-[22px] py-5">
+          <h5 className="text-[15.5px] font-semibold">At risk</h5>
+          {atRisk.slice(0, 4).map((m) => (
+            <Link key={m.id} href={`/members/${m.id}`} className="-mx-2 flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-row">
+              <span className="mt-1.5 h-[7px] w-[7px] flex-none rounded-full bg-bad" />
+              <span>
+                <span className="block text-[13.5px]">{m.name}</span>
+                <span className="block text-xs text-muted">{m.riskReasons[0]}</span>
+              </span>
+            </Link>
+          ))}
+          {atRisk.length === 0 && <div className="text-[13px] text-muted">Nothing to flag right now.</div>}
         </Card>
 
         <Card className="flex flex-col gap-3.5 px-[22px] py-5">

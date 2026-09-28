@@ -60,6 +60,9 @@ export interface Member {
   /** Sum of every paid sale ever, all-time — not just the current period. */
   lifetimeSpend: number;
   since: string;
+  /** Empty when not flagged. Each entry is a plain-English reason with the real numbers behind it
+      (see `computeRiskReasons` in `src/server/churnRisk.ts`) — never just a bare score. */
+  riskReasons: string[];
   phone: string;
   email: string;
   address?: string;

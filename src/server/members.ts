@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
 import { getCurrentCoach } from "./coaches";
-import { getLastSessionByName } from "./schedule";
+import { getLastSessionByName, getWeeklyVisitCounts, getUpcomingSessionCounts } from "./schedule";
 import { logAudit, getAuditLogForTarget } from "./auditLog";
+import { computeRiskReasons, CHURN_RISK_WEEKS_BACK, CHURN_RISK_UPCOMING_DAYS } from "./churnRisk";
 import { clock, formatDateShort } from "@/lib/time";
 import { parseInput } from "@/lib/validate";
 import { runAction, type ActionResult } from "@/lib/actionResult";
@@ -37,6 +38,7 @@ interface MemberRow {
   notes: string | null;
   plan: string;
   since: string;
+  membershipStatus: string;
   coach: { name: string } | null;
   sales: { total: unknown; paid: boolean }[];
 }
@@ -55,7 +57,7 @@ function formatLastSession(hit: { iso: string; start: number } | undefined): str
   return `${formatDateShort(new Date(`${hit.iso}T00:00:00`))} · ${clock(hit.start)}`;
 }
 
-function toMember(row: MemberRow, lastSession: string): Member {
+function toMember(row: MemberRow, lastSession: string, riskReasons: string[]): Member {
   const balance = row.sales.filter((s) => !s.paid).reduce((a, s) => a + Number(s.total), 0);
   const lifetimeSpend = row.sales.filter((s) => s.paid).reduce((a, s) => a + Number(s.total), 0);
   return {
@@ -71,6 +73,7 @@ function toMember(row: MemberRow, lastSession: string): Member {
     lifetimeSpend,
     since: row.since,
     lastSession,
+    riskReasons,
     coach: row.coach?.name ?? "Unassigned",
     address: row.address ?? undefined,
     postalCode: row.postalCode ?? undefined,
@@ -88,19 +91,42 @@ export async function getMembers(): Promise<Member[]> {
     include: { coach: true, sales: ALL_SALES_INCLUDE },
     orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
   });
-  const lastSessions = await getLastSessionByName(rows.map(fullName));
-  return rows.map((row) => toMember(row, formatLastSession(lastSessions[fullName(row)])));
+  const names = rows.map(fullName);
+  const [lastSessions, weeklyVisits, upcomingCounts] = await Promise.all([
+    getLastSessionByName(names),
+    getWeeklyVisitCounts(names, CHURN_RISK_WEEKS_BACK),
+    getUpcomingSessionCounts(names, CHURN_RISK_UPCOMING_DAYS),
+  ]);
+  return rows.map((row) => {
+    const name = fullName(row);
+    const riskReasons = computeRiskReasons({
+      membershipStatus: row.membershipStatus,
+      weeklyVisits: weeklyVisits[name] ?? [],
+      upcomingCount: upcomingCounts[name] ?? 0,
+    });
+    return toMember(row, formatLastSession(lastSessions[name]), riskReasons);
+  });
 }
 
 export async function getMemberById(id: string): Promise<Member | null> {
   const row = await db.member.findUnique({ where: { id }, include: { coach: true, sales: ALL_SALES_INCLUDE } });
   if (!row) return null;
-  const lastSessions = await getLastSessionByName([fullName(row)]);
+  const name = fullName(row);
+  const [lastSessions, weeklyVisits, upcomingCounts] = await Promise.all([
+    getLastSessionByName([name]),
+    getWeeklyVisitCounts([name], CHURN_RISK_WEEKS_BACK),
+    getUpcomingSessionCounts([name], CHURN_RISK_UPCOMING_DAYS),
+  ]);
+  const riskReasons = computeRiskReasons({
+    membershipStatus: row.membershipStatus,
+    weeklyVisits: weeklyVisits[name] ?? [],
+    upcomingCount: upcomingCounts[name] ?? 0,
+  });
 
   const actor = await getCurrentCoach();
   await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.view", targetType: "Member", targetId: row.id });
 
-  return toMember(row, formatLastSession(lastSessions[fullName(row)]));
+  return toMember(row, formatLastSession(lastSessions[name]), riskReasons);
 }
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {

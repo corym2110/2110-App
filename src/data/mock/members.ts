@@ -20,6 +20,7 @@ export const MEMBERS: Member[] = RAW.map(([name, plan, coach, lastSession, balan
   balance,
   lifetimeSpend: 0,
   since,
+  riskReasons: [],
   phone,
   email,
 }));

@@ -163,6 +163,70 @@ export async function getLastSessionByName(names: string[]): Promise<Record<stri
   return result;
 }
 
+/** Everyone a real occurrence is "for" — the roster for a group/class occurrence, or just the
+    1:1 booking's own name. Mirrors the same name-or-roster check `MemberProfile.tsx` already uses
+    client-side per member; these two functions are the batched, server-side, all-members version. */
+function attendeesOf(o: { name: string; roster?: string[] }): string[] {
+  return o.roster && o.roster.length > 0 ? o.roster : [o.name];
+}
+
+/** Per-name count of attended (non-missed) occurrences in each of the last `weeksBack` complete
+    weeks, index 0 = most recent week. Built on the same occurrence expansion
+    (`getOccurrencesForRange`) and attendance data (`getAttendanceForRange`) the schedule UI itself
+    uses — a "visit" is anything not marked No-show/Late cancel/Cancelled, the same completed/missed
+    split `dashboard/page.tsx` already applies. Used to spot a declining visit trend, not just a
+    snapshot of "have they gone quiet yet." */
+export async function getWeeklyVisitCounts(names: string[], weeksBack: number): Promise<Record<string, number[]>> {
+  const result: Record<string, number[]> = {};
+  if (names.length === 0) return result;
+  for (const name of names) result[name] = Array(weeksBack).fill(0);
+
+  const today = new Date(`${isoOf(new Date())}T00:00:00`);
+  const fromIso = isoOf(addDays(today, -weeksBack * 7));
+  const toIso = isoOf(today);
+
+  const [byIso, attendance] = await Promise.all([getOccurrencesForRange(fromIso, toIso), getAttendanceForRange(fromIso, toIso)]);
+
+  const nameSet = new Set(names);
+  for (const [iso, occs] of Object.entries(byIso)) {
+    const daysAgo = Math.round((today.getTime() - new Date(`${iso}T00:00:00`).getTime()) / 86400000);
+    const week = Math.floor(daysAgo / 7);
+    if (week < 0 || week >= weeksBack) continue;
+    for (const o of occs) {
+      for (const name of attendeesOf(o)) {
+        if (!nameSet.has(name)) continue;
+        const status = attendance[slotKey(o.iso, o.start, o.coach, name)];
+        const missed = status === "No-show" || status === "Late cancel" || status === "Cancelled";
+        if (!missed) result[name][week]++;
+      }
+    }
+  }
+  return result;
+}
+
+/** Per-name count of scheduled occurrences in the next `days` — used to flag an active member with
+    nothing on the books, a forward-looking gap distinct from a backward-looking visit-trend decline. */
+export async function getUpcomingSessionCounts(names: string[], days: number): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  if (names.length === 0) return result;
+  for (const name of names) result[name] = 0;
+
+  const today = new Date(`${isoOf(new Date())}T00:00:00`);
+  const fromIso = isoOf(addDays(today, 1));
+  const toIso = isoOf(addDays(today, days));
+  const byIso = await getOccurrencesForRange(fromIso, toIso);
+
+  const nameSet = new Set(names);
+  for (const occs of Object.values(byIso)) {
+    for (const o of occs) {
+      for (const name of attendeesOf(o)) {
+        if (nameSet.has(name)) result[name]++;
+      }
+    }
+  }
+  return result;
+}
+
 export async function addBooking(input: NewBookingInput): Promise<ActionResult<string>> {
   return runAction(async () => {
     const data = parseInput(NewBookingInputSchema, input);

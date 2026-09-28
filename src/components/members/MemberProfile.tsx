@@ -218,7 +218,24 @@ export function MemberProfile({
             <span className="rounded-full bg-row px-2.5 py-1 text-[12.5px] text-muted" title="Sum of every paid sale, all-time">
               {money(member.lifetimeSpend)} lifetime
             </span>
+            {member.riskReasons.length > 0 && (
+              <span
+                title={member.riskReasons.join(" ")}
+                className="rounded-full bg-bad/10 px-2.5 py-1 text-[12.5px] font-medium text-bad"
+              >
+                At risk
+              </span>
+            )}
           </div>
+          {member.riskReasons.length > 0 && (
+            <div className="mt-2 flex flex-col gap-0.5">
+              {member.riskReasons.map((r) => (
+                <div key={r} className="text-[12.5px] text-bad">
+                  {r}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex flex-none gap-2">
           <Link href="/schedule" className="grid h-[38px] place-items-center rounded-full border border-divider px-4 text-[13.5px] hover:bg-row">
