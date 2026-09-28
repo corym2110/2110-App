@@ -36,7 +36,11 @@ export function computeRiskReasons(input: RiskInput): string[] {
   const recentAvg = average(recent);
   const baselineAvg = average(baseline);
 
-  if (baselineAvg >= MIN_BASELINE_PER_WEEK && recentAvg <= baselineAvg * DECLINE_RATIO) {
+  // Skipped for a "paused" membership — staff already put it on hold for a known reason (travel,
+  // injury, etc.), so a drop in visits during that window isn't a new signal, just the expected
+  // result of the pause. Still applies to "none" (pay-per-session clients have no membership to
+  // pause at all, so this is their only real safety net) and "active"/"failed".
+  if (input.membershipStatus !== "paused" && baselineAvg >= MIN_BASELINE_PER_WEEK && recentAvg <= baselineAvg * DECLINE_RATIO) {
     reasons.push(`Visits down to ~${round1(recentAvg)}/wk, from ~${round1(baselineAvg)}/wk over the past two months.`);
   }
 
