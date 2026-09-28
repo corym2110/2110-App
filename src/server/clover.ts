@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "crypto";
+import * as Sentry from "@sentry/nextjs";
 import { db } from "./db";
 import { parseInput } from "@/lib/validate";
 import { TokenizedCardSummarySchema, AmountCentsSchema, type TokenizedCardSummary } from "@/lib/schemas";
@@ -56,9 +57,20 @@ export interface SaveCardResult {
 }
 
 /** Clover allows only one card on file per customer — replacing it 409s ("Customer already has
-    Card on File or ACH on File") unless the old one is revoked first. */
+    Card on File or ACH on File") unless the old one is revoked first. Best-effort: a failed
+    revoke shouldn't block saving the new card, but it must not vanish silently either — Clover
+    would be left holding a stale card with no local record it happened. */
 async function revokeCard(customerId: string, cardId: string): Promise<void> {
-  await sclFetch(`/v1/customers/${customerId}/sources/${cardId}`, { method: "DELETE" }).catch(() => {});
+  try {
+    const res = await sclFetch(`/v1/customers/${customerId}/sources/${cardId}`, { method: "DELETE" });
+    if (!res.ok) {
+      Sentry.captureException(new Error(`Clover card revoke failed: ${res.status} ${await res.text()}`), {
+        extra: { customerId, cardId },
+      });
+    }
+  } catch (e) {
+    Sentry.captureException(e, { extra: { customerId, cardId } });
+  }
 }
 
 /** Saves a tokenized card (from the hosted iframe's clover.createToken()) as this member's
