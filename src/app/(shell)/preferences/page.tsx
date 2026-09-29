@@ -56,6 +56,10 @@ export default function CoachPreferencesPage() {
   const landing = landingOverride ?? coach?.landing ?? "Dashboard";
   const [calViewOverride, setCalViewOverride] = useState<string | null>(null);
   const calView = calViewOverride ?? coach?.calendarView ?? "Week";
+  const [nameOverride, setNameOverride] = useState<string | null>(null);
+  const name = nameOverride ?? coach?.name ?? "";
+  const [mobileOverride, setMobileOverride] = useState<string | null>(null);
+  const mobile = mobileOverride ?? coach?.mobile ?? "";
   const [offFrom, setOffFrom] = useState("");
   const [offTo, setOffTo] = useState("");
   const [offReasonText, setOffReasonText] = useState("");
@@ -71,7 +75,7 @@ export default function CoachPreferencesPage() {
     setError(null);
     startSaving(async () => {
       try {
-        const result = await updateCoachPreferences(coachId, { notifyFlags: flags, landing, calendarView: calView });
+        const result = await updateCoachPreferences(coachId, { notifyFlags: flags, landing, calendarView: calView, name, mobile });
         if (!result.ok) {
           setError(result.error);
           return;
@@ -356,11 +360,26 @@ export default function CoachPreferencesPage() {
             <div className="grid grid-cols-2 gap-3">
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Display name</span>
-                <input key={coach.name} defaultValue={coach.name} className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+                <input
+                  value={name}
+                  onChange={(e) => {
+                    setNameOverride(e.target.value);
+                    setSaved(false);
+                  }}
+                  className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+                />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-[11.5px] tracking-wider text-muted uppercase">Mobile</span>
-                <input placeholder="Not on file" className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm" />
+                <input
+                  value={mobile}
+                  onChange={(e) => {
+                    setMobileOverride(e.target.value);
+                    setSaved(false);
+                  }}
+                  placeholder="Not on file"
+                  className="h-[38px] rounded-lg border border-divider bg-transparent px-2.5 text-sm"
+                />
               </label>
             </div>
             <label className="flex flex-col gap-1.5">

@@ -40,6 +40,8 @@ export const CoachPreferencesInputSchema = z.object({
   }),
   landing: z.string().trim().min(1).max(40),
   calendarView: z.string().trim().min(1).max(40),
+  name: z.string().trim().min(1, "Display name is required.").max(100).optional(),
+  mobile: z.string().trim().max(30).optional(),
 });
 export type CoachPreferencesInput = z.infer<typeof CoachPreferencesInputSchema>;
 

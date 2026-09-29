@@ -14,6 +14,7 @@ export interface CoachRow {
   id: string;
   name: string;
   email: string;
+  mobile: string | null;
   role: string;
   isAdmin: boolean;
   active: boolean;
@@ -27,6 +28,7 @@ function toCoachRow(row: {
   id: string;
   name: string;
   email: string;
+  mobile: string | null;
   role: string;
   isAdmin: boolean;
   active: boolean;
@@ -93,9 +95,17 @@ export async function updateCoachPreferences(coachId: string, input: CoachPrefer
     const data = parseInput(CoachPreferencesInputSchema, input);
     await db.coach.update({
       where: { id: coachId },
-      data: { notifyFlags: data.notifyFlags as object, landing: data.landing, calendarView: data.calendarView },
+      data: {
+        notifyFlags: data.notifyFlags as object,
+        landing: data.landing,
+        calendarView: data.calendarView,
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.mobile !== undefined ? { mobile: data.mobile || null } : {}),
+      },
     });
     revalidatePath("/preferences");
+    revalidatePath("/settings");
+    revalidatePath("/schedule");
   });
 }
 
