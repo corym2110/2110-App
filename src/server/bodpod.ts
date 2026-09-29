@@ -35,6 +35,29 @@ export async function logBodPodResult(input: LogBodPodResultInput): Promise<Acti
   });
 }
 
+export async function updateBodPodResult(id: string, input: LogBodPodResultInput): Promise<ActionResult<void>> {
+  return runAction(async () => {
+    const data = parseInput(LogBodPodResultInputSchema, input);
+    await db.bodPodResult.update({
+      where: { id },
+      data: {
+        scanIso: data.scanIso,
+        bodyMassLbs: data.bodyMassLbs,
+        fatMassLbs: data.fatMassLbs,
+        fatFreeMassLbs: data.fatFreeMassLbs,
+        bodyFatPct: data.bodyFatPct,
+        rmrKcal: data.rmrKcal ?? null,
+        notes: data.notes || undefined,
+      },
+    });
+
+    const actor = await getCurrentCoach();
+    await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.bodpod.update", targetType: "Member", targetId: data.memberId, detail: data.scanIso });
+
+    revalidatePath(`/members/${data.memberId}`);
+  });
+}
+
 export async function deleteBodPodResult(id: string, memberId: string): Promise<ActionResult<void>> {
   return runAction(async () => {
     await db.bodPodResult.delete({ where: { id } });

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
-import { XIcon } from "@/components/ui/icons";
+import { XIcon, PencilIcon } from "@/components/ui/icons";
 import { TrendSparkline } from "@/components/members/TrendSparkline";
 import { LogBodPodScanDialog } from "@/components/members/LogBodPodScanDialog";
 import { getBodPodResultsForMember, deleteBodPodResult, type BodPodResultRow } from "@/server/bodpod";
@@ -52,6 +52,7 @@ function toCsv(rows: BodPodResultRow[]): string {
 export function BodPodCard({ member }: { member: Member }) {
   const [results, setResults] = useState<BodPodResultRow[]>([]);
   const [logOpen, setLogOpen] = useState(false);
+  const [editing, setEditing] = useState<BodPodResultRow | null>(null);
   const [isDeleting, startDeleting] = useTransition();
 
   function refetch() {
@@ -98,24 +99,35 @@ export function BodPodCard({ member }: { member: Member }) {
             {newestFirst.map((r, i) => {
               const prev = newestFirst[i + 1];
               return (
-                <div key={r.id} className="group flex items-center gap-3 border-b border-divider py-2.5 text-[12.5px] last:border-b-0">
-                  <span className="w-[84px] flex-none tabular-nums text-muted">{formatDateShort(new Date(`${r.scanIso}T00:00:00`))}</span>
-                  <span className="w-[72px] flex-none tabular-nums">{fmtLb(r.bodyMassLbs)}</span>
-                  <span className="w-[76px] flex-none tabular-nums text-muted">{fmtPct(r.bodyFatPct)}</span>
-                  <span className="w-[80px] flex-none tabular-nums text-muted">{fmtLb(r.fatFreeMassLbs)} FFM</span>
-                  {r.rmrKcal != null && <span className="w-[92px] flex-none tabular-nums text-muted">{r.rmrKcal.toFixed(0)} kcal</span>}
-                  <span className="min-w-0 flex-1 text-right tabular-nums">
-                    <Delta prev={prev?.bodyFatPct} cur={r.bodyFatPct} fmt={fmtPct} />
-                  </span>
-                  <button
-                    type="button"
-                    disabled={isDeleting}
-                    onClick={() => startDeleting(async () => { await deleteBodPodResult(r.id, member.id); refetch(); })}
-                    title="Delete this entry"
-                    className="grid h-6 w-6 flex-none place-items-center rounded-md text-muted opacity-0 hover:bg-row hover:text-bad group-hover:opacity-100"
-                  >
-                    <XIcon size={12} />
-                  </button>
+                <div key={r.id} className="flex items-start justify-between gap-3 border-b border-divider py-2.5 last:border-b-0">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-semibold tabular-nums">{formatDateShort(new Date(`${r.scanIso}T00:00:00`))}</div>
+                    <div className="mt-0.5 text-[12.5px] text-pretty text-muted">
+                      {fmtLb(r.bodyMassLbs)} · {fmtPct(r.bodyFatPct)} fat · {fmtLb(r.fatFreeMassLbs)} FFM
+                      {r.rmrKcal != null && <> · {r.rmrKcal.toFixed(0)} kcal RMR</>}
+                      {" · "}
+                      <Delta prev={prev?.bodyFatPct} cur={r.bodyFatPct} fmt={fmtPct} /> vs last
+                    </div>
+                  </div>
+                  <div className="flex flex-none items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(r)}
+                      title="Edit this entry"
+                      className="grid h-7 w-7 flex-none place-items-center rounded-md text-muted hover:bg-row hover:text-fg"
+                    >
+                      <PencilIcon size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => startDeleting(async () => { await deleteBodPodResult(r.id, member.id); refetch(); })}
+                      title="Delete this entry"
+                      className="grid h-7 w-7 flex-none place-items-center rounded-md text-muted hover:bg-row hover:text-bad disabled:opacity-50"
+                    >
+                      <XIcon size={13} />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -124,6 +136,7 @@ export function BodPodCard({ member }: { member: Member }) {
       )}
 
       {logOpen && <LogBodPodScanDialog member={member} onClose={() => setLogOpen(false)} onLogged={refetch} />}
+      {editing && <LogBodPodScanDialog member={member} existing={editing} onClose={() => setEditing(null)} onLogged={refetch} />}
     </Card>
   );
 }

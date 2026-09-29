@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { logBodPodResult } from "@/server/bodpod";
+import { logBodPodResult, updateBodPodResult, type BodPodResultRow } from "@/server/bodpod";
 import { XIcon } from "@/components/ui/icons";
 import { isoOf, startOfToday } from "@/lib/time";
 import type { Member } from "@/types";
@@ -39,14 +39,26 @@ function NumberField({
   );
 }
 
-export function LogBodPodScanDialog({ member, onClose, onLogged }: { member: Member; onClose: () => void; onLogged: () => void }) {
-  const [scanIso, setScanIso] = useState(isoOf(startOfToday()));
-  const [bodyMassLbs, setBodyMassLbs] = useState("");
-  const [fatMassLbs, setFatMassLbs] = useState("");
-  const [fatFreeMassLbs, setFatFreeMassLbs] = useState("");
-  const [bodyFatPct, setBodyFatPct] = useState("");
-  const [rmrKcal, setRmrKcal] = useState("");
-  const [notes, setNotes] = useState("");
+/** Same form for logging a new scan and editing an existing one — pass `existing` to edit. */
+export function LogBodPodScanDialog({
+  member,
+  existing,
+  onClose,
+  onLogged,
+}: {
+  member: Member;
+  existing?: BodPodResultRow;
+  onClose: () => void;
+  onLogged: () => void;
+}) {
+  const isEdit = !!existing;
+  const [scanIso, setScanIso] = useState(existing?.scanIso ?? isoOf(startOfToday()));
+  const [bodyMassLbs, setBodyMassLbs] = useState(existing ? String(existing.bodyMassLbs) : "");
+  const [fatMassLbs, setFatMassLbs] = useState(existing ? String(existing.fatMassLbs) : "");
+  const [fatFreeMassLbs, setFatFreeMassLbs] = useState(existing ? String(existing.fatFreeMassLbs) : "");
+  const [bodyFatPct, setBodyFatPct] = useState(existing ? String(existing.bodyFatPct) : "");
+  const [rmrKcal, setRmrKcal] = useState(existing?.rmrKcal != null ? String(existing.rmrKcal) : "");
+  const [notes, setNotes] = useState(existing?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -56,7 +68,7 @@ export function LogBodPodScanDialog({ member, onClose, onLogged }: { member: Mem
     if (!canSave || isPending) return;
     setError(null);
     startTransition(async () => {
-      const result = await logBodPodResult({
+      const input = {
         memberId: member.id,
         scanIso,
         bodyMassLbs: Number(bodyMassLbs),
@@ -65,7 +77,8 @@ export function LogBodPodScanDialog({ member, onClose, onLogged }: { member: Mem
         bodyFatPct: Number(bodyFatPct),
         rmrKcal: rmrKcal ? Number(rmrKcal) : undefined,
         notes: notes.trim() || undefined,
-      });
+      };
+      const result = isEdit ? await updateBodPodResult(existing.id, input) : await logBodPodResult(input);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -80,7 +93,7 @@ export function LogBodPodScanDialog({ member, onClose, onLogged }: { member: Mem
       <div className="popover-shadow flex max-h-[90vh] w-full max-w-[480px] flex-col gap-3.5 overflow-hidden rounded-2xl bg-surface p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="text-lg font-medium tracking-tight">Log BodPod scan</div>
+            <div className="text-lg font-medium tracking-tight">{isEdit ? "Edit BodPod scan" : "Log BodPod scan"}</div>
             <div className="text-[13px] text-muted">For {member.name}, from the printed report.</div>
           </div>
           <button type="button" onClick={onClose} className="grid h-8 w-8 flex-none place-items-center rounded-lg text-muted hover:bg-row hover:text-fg">
@@ -131,7 +144,7 @@ export function LogBodPodScanDialog({ member, onClose, onLogged }: { member: Mem
             disabled={!canSave || isPending}
             className="h-10 rounded-full bg-accent px-4 text-[13.5px] font-semibold text-on-accent disabled:opacity-60"
           >
-            {isPending ? "Saving…" : "Save scan"}
+            {isPending ? "Saving…" : isEdit ? "Save changes" : "Save scan"}
           </button>
         </div>
       </div>
