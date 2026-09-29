@@ -75,7 +75,7 @@ export function Header() {
               onChange={(e) => setQuery(e.target.value)}
               onFocus={() => setSearchOpen(true)}
               placeholder="Search members, sessions, pages"
-              className="h-full min-w-0 flex-1 border-0 bg-transparent text-[13.5px] text-fg outline-none placeholder:text-muted"
+              className="focus-ring-none h-full min-w-0 flex-1 border-0 bg-transparent text-[13.5px] text-fg outline-none placeholder:text-muted"
             />
             {query && (
               <button

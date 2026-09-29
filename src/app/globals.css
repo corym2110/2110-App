@@ -110,6 +110,17 @@ body {
   outline-offset: 2px;
 }
 
+/** This rule is unlayered CSS, so it beats any Tailwind utility (including `outline-none`) on
+    specificity ties regardless of source order — Tailwind's utilities live inside a named
+    `@layer`, and unlayered rules always win over layered ones per the CSS cascade-layers spec.
+    A handful of controls (like the header search box) already draw their own focus treatment and
+    sit inside a rounded, `overflow-hidden` container — the native outline's `outline-offset: 2px`
+    pokes just outside that clip, so only its straight edges show through as stray lines once the
+    rounded corners get clipped away. `.focus-ring-none` opts a specific control out cleanly. */
+.focus-ring-none:focus-visible {
+  outline: none;
+}
+
 .card-shadow {
   box-shadow: var(--app-card-shadow);
 }
