@@ -141,6 +141,8 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "member.waiver.sign": "Signed waiver",
   "member.waiver.view": "Viewed waiver",
   "member.view": "Viewed profile",
+  "member.bodpod.log": "Logged BodPod scan",
+  "member.bodpod.delete": "Deleted BodPod scan",
 };
 
 export interface AuditLogRow {

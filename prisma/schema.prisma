@@ -32,6 +32,7 @@ model Coach {
   waiversWitnessed WaiverSignature[]
   sessionCredits   SessionCredit[]
   products         Product[]
+  bodPodResults    BodPodResult[]
 }
 
 model TimeOff {
@@ -160,6 +161,7 @@ model Member {
   sales         Sale[]
   waivers       WaiverSignature[]
   sessionCredits SessionCredit[]
+  bodPodResults BodPodResult[]
   createdAt     DateTime        @default(now())
 }
 
@@ -179,6 +181,29 @@ model WaiverSignature {
   signedByCoachId  String?
   signedByCoach    Coach?   @relation(fields: [signedByCoachId], references: [id])
   createdAt        DateTime @default(now())
+
+  @@index([memberId])
+}
+
+/** One BodPod scan result, manually entered by a coach from the printed report — Body Mass, Fat
+    Mass, Fat Free Mass, % Fat, and RMR are the report's own field names (% Fat Free Mass is just
+    `100 - bodyFatPct`, so it's computed for display rather than stored). Replaces the report
+    template's own "Body Composition Tracking" page, a manually-updated table hardcoded to 6 rows
+    that throws #DIV/0! once a client outgrows it. */
+model BodPodResult {
+  id              String   @id @default(cuid())
+  memberId        String
+  member          Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  scanIso         String
+  bodyMassLbs     Float
+  fatMassLbs      Float
+  fatFreeMassLbs  Float
+  bodyFatPct      Float
+  rmrKcal         Float?
+  notes           String?
+  loggedByCoachId String?
+  loggedByCoach   Coach?   @relation(fields: [loggedByCoachId], references: [id])
+  createdAt       DateTime @default(now())
 
   @@index([memberId])
 }

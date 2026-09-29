@@ -30,6 +30,7 @@ import { SignWaiverDialog } from "@/components/members/SignWaiverDialog";
 import { WaiverViewDialog } from "@/components/members/WaiverViewDialog";
 import { getWaiverSignaturesForMember, type WaiverSummaryRow } from "@/server/waivers";
 import { SessionCreditsDialog } from "@/components/members/SessionCreditsDialog";
+import { BodPodCard } from "@/components/members/BodPodCard";
 import { getSessionCreditsForMember, type SessionCreditRow } from "@/server/billing";
 import { PREBILL_TYPES } from "@/lib/prebill";
 import { CardOnFileDialog } from "@/components/members/CardOnFileDialog";
@@ -524,6 +525,8 @@ export function MemberProfile({
           </div>
           <div className="text-[13.5px] text-pretty text-muted">{member.notes || "No notes yet."}</div>
         </Card>
+
+        <BodPodCard member={member} />
       </div>
 
       <Card className="px-[22px] py-5">

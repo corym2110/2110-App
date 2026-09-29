@@ -183,6 +183,18 @@ export const SignWaiverInputSchema = z.object({
 });
 export type SignWaiverInput = z.infer<typeof SignWaiverInputSchema>;
 
+export const LogBodPodResultInputSchema = z.object({
+  memberId: z.string().min(1, "Member is required."),
+  scanIso: IsoDateSchema,
+  bodyMassLbs: z.number().positive("Body mass must be a positive number."),
+  fatMassLbs: z.number().positive("Fat mass must be a positive number."),
+  fatFreeMassLbs: z.number().positive("Fat free mass must be a positive number."),
+  bodyFatPct: z.number().min(0, "% Fat must be between 0 and 100.").max(100, "% Fat must be between 0 and 100."),
+  rmrKcal: z.number().positive("RMR must be a positive number.").optional(),
+  notes: z.string().trim().max(500).optional(),
+});
+export type LogBodPodResultInput = z.infer<typeof LogBodPodResultInputSchema>;
+
 /** The card summary as reported by Clover.js's `createToken()` on the client — the browser has
     this from the raw card entry, before it's ever tokenized, so it's the one place brand/last4/
     expiry are actually available (Clover's server-side customer API never returns them). */
