@@ -63,6 +63,12 @@ export interface Member {
   /** Empty when not flagged. Each entry is a plain-English reason with the real numbers behind it
       (see `computeRiskReasons` in `src/server/churnRisk.ts`) — never just a bare score. */
   riskReasons: string[];
+  /** ISO timestamp of the most recent "mark followed up" log entry (`ChurnFollowUp`), or undefined
+      if never followed up. `riskReasons` itself never changes because of this — it just gives the
+      dashboard's "At risk" card something to snooze against. */
+  lastFollowUpAt?: string;
+  /** Unused (not-yet-applied) session credit count, or undefined for a member with none purchased. */
+  sessionsLeft?: number;
   phone: string;
   email: string;
   address?: string;

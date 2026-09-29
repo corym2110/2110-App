@@ -31,6 +31,7 @@ import { WaiverViewDialog } from "@/components/members/WaiverViewDialog";
 import { getWaiverSignaturesForMember, type WaiverSummaryRow } from "@/server/waivers";
 import { SessionCreditsDialog } from "@/components/members/SessionCreditsDialog";
 import { BodPodCard } from "@/components/members/BodPodCard";
+import { markFollowedUp } from "@/server/churnFollowUps";
 import { getSessionCreditsForMember, type SessionCreditRow } from "@/server/billing";
 import { PREBILL_TYPES } from "@/lib/prebill";
 import { CardOnFileDialog } from "@/components/members/CardOnFileDialog";
@@ -229,12 +230,25 @@ export function MemberProfile({
             )}
           </div>
           {member.riskReasons.length > 0 && (
-            <div className="mt-2 flex flex-col gap-0.5">
+            <div className="mt-2 flex flex-col gap-1">
               {member.riskReasons.map((r) => (
                 <div key={r} className="text-[12.5px] text-bad">
                   {r}
                 </div>
               ))}
+              <div className="mt-0.5 flex items-center gap-2.5 text-[12px]">
+                {member.lastFollowUpAt && (
+                  <span className="text-muted">Last followed up {formatDateShort(new Date(member.lastFollowUpAt))}</span>
+                )}
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => startTransition(async () => { await markFollowedUp({ memberId: member.id }); router.refresh(); })}
+                  className="text-link hover:text-link-hover disabled:opacity-60"
+                >
+                  Mark followed up
+                </button>
+              </div>
             </div>
           )}
         </div>

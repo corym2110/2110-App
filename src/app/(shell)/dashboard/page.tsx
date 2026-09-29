@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Card } from "@/components/ui/Card";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
@@ -9,7 +9,17 @@ import { addDays, clock, DOW_LABELS, formatDateLong, isoOf, mondayOf, money, mon
 import { useMembers } from "@/lib/useMembers";
 import { useCurrentCoach } from "@/lib/useCoaches";
 import { getRevenueForRange, type DashboardRangeKey } from "@/server/sales";
+import { getPackageWarningThreshold } from "@/server/members";
+import { markFollowedUp } from "@/server/churnFollowUps";
 import { upcomingBirthdays } from "@/lib/birthdays";
+import type { Member } from "@/types";
+
+const FOLLOWUP_SNOOZE_DAYS = 7;
+
+function recentlyFollowedUp(m: Member): boolean {
+  if (!m.lastFollowUpAt) return false;
+  return (Date.now() - new Date(m.lastFollowUpAt).getTime()) / 86_400_000 < FOLLOWUP_SNOOZE_DAYS;
+}
 
 type Range = DashboardRangeKey;
 
@@ -93,7 +103,19 @@ export default function DashboardPage() {
     .sort((a, b) => b.balance - a.balance);
   const outstandingBalance = balanceDue.reduce((a, m) => a + m.balance, 0);
 
-  const atRisk = members.filter((m) => m.riskReasons.length > 0 && (isAdmin || m.coach === coach?.name));
+  const [justFollowedUp, setJustFollowedUp] = useState<Set<string>>(new Set());
+  const [isFollowingUp, startFollowUp] = useTransition();
+  const atRisk = members.filter(
+    (m) => m.riskReasons.length > 0 && !recentlyFollowedUp(m) && !justFollowedUp.has(m.id) && (isAdmin || m.coach === coach?.name),
+  );
+
+  const [packageWarningThreshold, setPackageWarningThreshold] = useState(2);
+  useEffect(() => {
+    getPackageWarningThreshold().then(setPackageWarningThreshold);
+  }, []);
+  const lowOnSessions = members
+    .filter((m) => m.sessionsLeft != null && m.sessionsLeft > 0 && m.sessionsLeft <= packageWarningThreshold && (isAdmin || m.coach === coach?.name))
+    .sort((a, b) => (a.sessionsLeft ?? 0) - (b.sessionsLeft ?? 0));
 
   const myClients = members.filter((m) => isAdmin || m.coach === coach?.name);
   const birthdays = upcomingBirthdays(myClients, 14, today);
@@ -208,7 +230,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 xl:grid-cols-5">
         <Card className="flex flex-col gap-3 px-[22px] py-5">
           <h5 className="text-[15.5px] font-semibold">Needs attention</h5>
           {balanceDue.slice(0, 4).map((m) => (
@@ -226,15 +248,43 @@ export default function DashboardPage() {
         <Card className="flex flex-col gap-3 px-[22px] py-5">
           <h5 className="text-[15.5px] font-semibold">At risk</h5>
           {atRisk.slice(0, 4).map((m) => (
+            <div key={m.id} className="-mx-2 flex items-start gap-2 rounded-lg px-2 py-1.5 hover:bg-row">
+              <span className="mt-1.5 h-[7px] w-[7px] flex-none rounded-full bg-bad" />
+              <Link href={`/members/${m.id}`} className="min-w-0 flex-1 text-fg">
+                <span className="block text-[13.5px]">{m.name}</span>
+                <span className="block text-xs text-muted">{m.riskReasons[0]}</span>
+              </Link>
+              <button
+                type="button"
+                disabled={isFollowingUp}
+                onClick={() => {
+                  setJustFollowedUp((s) => new Set(s).add(m.id));
+                  startFollowUp(async () => {
+                    await markFollowedUp({ memberId: m.id });
+                  });
+                }}
+                title="Mark that you've followed up with this client"
+                className="mt-0.5 flex-none text-[11.5px] text-link hover:text-link-hover disabled:opacity-60"
+              >
+                Followed up
+              </button>
+            </div>
+          ))}
+          {atRisk.length === 0 && <div className="text-[13px] text-muted">Nothing to flag right now.</div>}
+        </Card>
+
+        <Card className="flex flex-col gap-3 px-[22px] py-5">
+          <h5 className="text-[15.5px] font-semibold">Low on sessions</h5>
+          {lowOnSessions.slice(0, 4).map((m) => (
             <Link key={m.id} href={`/members/${m.id}`} className="-mx-2 flex items-start gap-2.5 rounded-lg px-2 py-1.5 hover:bg-row">
               <span className="mt-1.5 h-[7px] w-[7px] flex-none rounded-full bg-bad" />
               <span>
                 <span className="block text-[13.5px]">{m.name}</span>
-                <span className="block text-xs text-muted">{m.riskReasons[0]}</span>
+                <span className="block text-xs text-muted">{m.sessionsLeft} session{m.sessionsLeft === 1 ? "" : "s"} left</span>
               </span>
             </Link>
           ))}
-          {atRisk.length === 0 && <div className="text-[13px] text-muted">Nothing to flag right now.</div>}
+          {lowOnSessions.length === 0 && <div className="text-[13px] text-muted">Nobody&apos;s running low right now.</div>}
         </Card>
 
         <Card className="flex flex-col gap-3.5 px-[22px] py-5">

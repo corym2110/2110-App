@@ -7,9 +7,21 @@ import { MONTHS } from "@/lib/time";
     app's minimal, hand-rolled visuals (e.g. the Reports page's width-percentage bars). The SVG
     plot uses a fixed 0-100 coordinate space scaled to its container via `preserveAspectRatio="none"`;
     axis labels are plain HTML positioned alongside/under it rather than SVG `<text>`, since SVG
-    text would stretch unreadably under that same non-uniform scaling. */
+    text would stretch unreadably under that same non-uniform scaling.
+
+    Supports one or more series sharing the same x-axis (same iso dates) and one shared y-axis —
+    a single series renders exactly as a plain trend line (no legend); 2+ series each get their
+    own `colorClass` (a `text-*` Tailwind class, since the SVG strokes use `currentColor`) and a
+    small legend row appears underneath. */
 
 const MAX_X_LABELS = 6;
+
+export interface TrendSeries {
+  key: string;
+  label: string;
+  colorClass: string;
+  values: { iso: string; value: number }[];
+}
 
 function shortDate(iso: string): string {
   const [y, m] = iso.split("-");
@@ -17,19 +29,20 @@ function shortDate(iso: string): string {
 }
 
 export function TrendSparkline({
-  points,
+  series,
   height = 96,
   formatValue = (v: number) => String(v),
 }: {
-  points: { iso: string; value: number }[];
+  series: TrendSeries[];
   height?: number;
   formatValue?: (v: number) => string;
 }) {
-  if (points.length === 0) return null;
+  const points = series[0]?.values ?? [];
+  if (series.length === 0 || points.length === 0) return null;
 
-  const values = points.map((p) => p.value);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const allValues = series.flatMap((s) => s.values.map((p) => p.value));
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues);
   const span = max - min || 1;
   const mid = (min + max) / 2;
 
@@ -39,8 +52,6 @@ export function TrendSparkline({
   function yOf(v: number): number {
     return height - ((v - min) / span) * height;
   }
-
-  const linePoints = points.map((p, i) => `${xOf(i)},${yOf(p.value)}`).join(" ");
 
   // Thin out x-axis labels so they don't collide when there are many points — always keep the
   // first and last, evenly sample the rest.
@@ -57,18 +68,25 @@ export function TrendSparkline({
         <span>{formatValue(min)}</span>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-accent" style={{ height }}>
+        <div style={{ height }}>
           <svg width="100%" height={height} viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="overflow-visible">
-            <line x1="0" y1={0} x2="100" y2={0} stroke="currentColor" strokeOpacity={0.12} strokeWidth={1} vectorEffect="non-scaling-stroke" />
-            <line x1="0" y1={height} x2="100" y2={height} stroke="currentColor" strokeOpacity={0.12} strokeWidth={1} vectorEffect="non-scaling-stroke" />
-            <polyline points={linePoints} fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-            {points.map((p, i) => (
-              <circle key={p.iso} cx={xOf(i)} cy={yOf(p.value)} r={i === points.length - 1 ? 2.5 : 1.75} fill="currentColor">
-                <title>
-                  {shortDate(p.iso)} — {formatValue(p.value)}
-                </title>
-              </circle>
-            ))}
+            <line x1="0" y1={0} x2="100" y2={0} stroke="currentColor" strokeOpacity={0.12} strokeWidth={1} vectorEffect="non-scaling-stroke" className="text-muted" />
+            <line x1="0" y1={height} x2="100" y2={height} stroke="currentColor" strokeOpacity={0.12} strokeWidth={1} vectorEffect="non-scaling-stroke" className="text-muted" />
+            {series.map((s) => {
+              const linePoints = s.values.map((p, i) => `${xOf(i)},${yOf(p.value)}`).join(" ");
+              return (
+                <g key={s.key} className={s.colorClass}>
+                  <polyline points={linePoints} fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                  {s.values.map((p, i) => (
+                    <circle key={p.iso} cx={xOf(i)} cy={yOf(p.value)} r={i === s.values.length - 1 ? 2.5 : 1.75} fill="currentColor">
+                      <title>
+                        {s.label} · {shortDate(p.iso)} — {formatValue(p.value)}
+                      </title>
+                    </circle>
+                  ))}
+                </g>
+              );
+            })}
           </svg>
         </div>
         <div className="relative mt-1 h-4">
@@ -86,6 +104,16 @@ export function TrendSparkline({
             );
           })}
         </div>
+        {series.length > 1 && (
+          <div className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1">
+            {series.map((s) => (
+              <span key={s.key} className="flex items-center gap-1.5 text-[11px] text-muted">
+                <span className={`h-[7px] w-[7px] flex-none rounded-full bg-current ${s.colorClass}`} />
+                {s.label}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

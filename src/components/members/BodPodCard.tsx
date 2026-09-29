@@ -93,7 +93,24 @@ export function BodPodCard({ member }: { member: Member }) {
       {results.length > 0 && (
         <>
           <div className="mb-1 text-[11.5px] tracking-wider text-muted uppercase">% Fat trend</div>
-          <TrendSparkline points={results.map((r) => ({ iso: r.scanIso, value: r.bodyFatPct }))} formatValue={fmtPct} />
+          <TrendSparkline
+            series={[{ key: "pct", label: "% Fat", colorClass: "text-accent", values: results.map((r) => ({ iso: r.scanIso, value: r.bodyFatPct })) }]}
+            formatValue={fmtPct}
+          />
+
+          {results.length > 1 && (
+            <div className="mt-4 border-t border-divider pt-3">
+              <div className="mb-1 text-[11.5px] tracking-wider text-muted uppercase">Mass trend</div>
+              <TrendSparkline
+                series={[
+                  { key: "mass", label: "Body Mass", colorClass: "text-fg", values: results.map((r) => ({ iso: r.scanIso, value: r.bodyMassLbs })) },
+                  { key: "fat", label: "Fat Mass", colorClass: "text-muted", values: results.map((r) => ({ iso: r.scanIso, value: r.fatMassLbs })) },
+                  { key: "ffm", label: "Fat Free Mass", colorClass: "text-accent", values: results.map((r) => ({ iso: r.scanIso, value: r.fatFreeMassLbs })) },
+                ]}
+                formatValue={fmtLb}
+              />
+            </div>
+          )}
 
           <div className="mt-4 border-t border-divider pt-3">
             {newestFirst.map((r, i) => {

@@ -325,6 +325,14 @@ export async function unapplyCredit(creditId: string): Promise<void> {
   revalidatePath(`/members/${credit.memberId}`);
 }
 
+/** Every member's count of unused (not-yet-applied-to-an-occurrence) session credits, one
+    indexed query for the whole roster — feeds the dashboard's "Low on sessions" alert without an
+    N+1 per-member lookup. */
+export async function getUnusedCreditCountsByMember(): Promise<Map<string, number>> {
+  const rows = await db.sessionCredit.groupBy({ by: ["memberId"], where: { appliedOccurrenceKey: null }, _count: { _all: true } });
+  return new Map(rows.map((r) => [r.memberId, r._count._all]));
+}
+
 /** Re-points an unapplied (or previously applied) credit at a different occurrence — the manual
     override on top of the auto-assignment done at billing time. Refuses to double-cover a session
     that another credit *for the same member* already claims — scoped per member because one

@@ -6,6 +6,9 @@ import { getCurrentCoach } from "./coaches";
 import { getLastSessionByName, getWeeklyVisitCounts, getUpcomingSessionCounts } from "./schedule";
 import { logAudit, getAuditLogForTarget } from "./auditLog";
 import { computeRiskReasons, CHURN_RISK_WEEKS_BACK, CHURN_RISK_UPCOMING_DAYS } from "./churnRisk";
+import { getLatestFollowUpDates } from "./churnFollowUps";
+import { getUnusedCreditCountsByMember } from "./billing";
+import { getBusinessSettings } from "./settings";
 import { clock, formatDateShort } from "@/lib/time";
 import { parseInput } from "@/lib/validate";
 import { runAction, type ActionResult } from "@/lib/actionResult";
@@ -57,7 +60,7 @@ function formatLastSession(hit: { iso: string; start: number } | undefined): str
   return `${formatDateShort(new Date(`${hit.iso}T00:00:00`))} · ${clock(hit.start)}`;
 }
 
-function toMember(row: MemberRow, lastSession: string, riskReasons: string[]): Member {
+function toMember(row: MemberRow, lastSession: string, riskReasons: string[], lastFollowUpAt: Date | undefined, sessionsLeft: number | undefined): Member {
   const balance = row.sales.filter((s) => !s.paid).reduce((a, s) => a + Number(s.total), 0);
   const lifetimeSpend = row.sales.filter((s) => s.paid).reduce((a, s) => a + Number(s.total), 0);
   return {
@@ -74,6 +77,8 @@ function toMember(row: MemberRow, lastSession: string, riskReasons: string[]): M
     since: row.since,
     lastSession,
     riskReasons,
+    lastFollowUpAt: lastFollowUpAt ? lastFollowUpAt.toISOString() : undefined,
+    sessionsLeft,
     coach: row.coach?.name ?? "Unassigned",
     address: row.address ?? undefined,
     postalCode: row.postalCode ?? undefined,
@@ -92,10 +97,12 @@ export async function getMembers(): Promise<Member[]> {
     orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
   });
   const names = rows.map(fullName);
-  const [lastSessions, weeklyVisits, upcomingCounts] = await Promise.all([
+  const [lastSessions, weeklyVisits, upcomingCounts, followUpDates, creditCounts] = await Promise.all([
     getLastSessionByName(names),
     getWeeklyVisitCounts(names, CHURN_RISK_WEEKS_BACK),
     getUpcomingSessionCounts(names, CHURN_RISK_UPCOMING_DAYS),
+    getLatestFollowUpDates(),
+    getUnusedCreditCountsByMember(),
   ]);
   return rows.map((row) => {
     const name = fullName(row);
@@ -104,7 +111,7 @@ export async function getMembers(): Promise<Member[]> {
       weeklyVisits: weeklyVisits[name] ?? [],
       upcomingCount: upcomingCounts[name] ?? 0,
     });
-    return toMember(row, formatLastSession(lastSessions[name]), riskReasons);
+    return toMember(row, formatLastSession(lastSessions[name]), riskReasons, followUpDates.get(row.id), creditCounts.get(row.id));
   });
 }
 
@@ -112,10 +119,12 @@ export async function getMemberById(id: string): Promise<Member | null> {
   const row = await db.member.findUnique({ where: { id }, include: { coach: true, sales: ALL_SALES_INCLUDE } });
   if (!row) return null;
   const name = fullName(row);
-  const [lastSessions, weeklyVisits, upcomingCounts] = await Promise.all([
+  const [lastSessions, weeklyVisits, upcomingCounts, followUpDates, creditCounts] = await Promise.all([
     getLastSessionByName([name]),
     getWeeklyVisitCounts([name], CHURN_RISK_WEEKS_BACK),
     getUpcomingSessionCounts([name], CHURN_RISK_UPCOMING_DAYS),
+    getLatestFollowUpDates(),
+    getUnusedCreditCountsByMember(),
   ]);
   const riskReasons = computeRiskReasons({
     membershipStatus: row.membershipStatus,
@@ -126,7 +135,14 @@ export async function getMemberById(id: string): Promise<Member | null> {
   const actor = await getCurrentCoach();
   await logAudit({ actorId: actor?.id ?? null, actorName: actor?.name ?? "Unknown", action: "member.view", targetType: "Member", targetId: row.id });
 
-  return toMember(row, formatLastSession(lastSessions[name]), riskReasons);
+  return toMember(row, formatLastSession(lastSessions[name]), riskReasons, followUpDates.get(row.id), creditCounts.get(row.id));
+}
+
+/** `packageWarning` is a Settings-page dropdown locked to exactly "2/3/5 sessions left" — parsing
+    the leading number is safe without a shared util for that fixed 3-value set. */
+export async function getPackageWarningThreshold(): Promise<number> {
+  const settings = await getBusinessSettings();
+  return parseInt(settings.packageWarning, 10) || 2;
 }
 
 const AUDIT_ACTION_LABELS: Record<string, string> = {
@@ -141,6 +157,7 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "member.waiver.sign": "Signed waiver",
   "member.waiver.view": "Viewed waiver",
   "member.view": "Viewed profile",
+  "member.followUp": "Logged follow-up",
   "member.bodpod.log": "Logged BodPod scan",
   "member.bodpod.update": "Edited BodPod scan",
   "member.bodpod.delete": "Deleted BodPod scan",

@@ -195,6 +195,12 @@ export const LogBodPodResultInputSchema = z.object({
 });
 export type LogBodPodResultInput = z.infer<typeof LogBodPodResultInputSchema>;
 
+export const LogFollowUpInputSchema = z.object({
+  memberId: z.string().min(1, "Member is required."),
+  note: z.string().trim().max(500).optional(),
+});
+export type LogFollowUpInput = z.infer<typeof LogFollowUpInputSchema>;
+
 /** The card summary as reported by Clover.js's `createToken()` on the client — the browser has
     this from the raw card entry, before it's ever tokenized, so it's the one place brand/last4/
     expiry are actually available (Clover's server-side customer API never returns them). */
