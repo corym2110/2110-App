@@ -112,7 +112,7 @@ export default function DashboardPage() {
         <SegmentedControl options={["Day", "Week", "Month"] as const} value={range} onChange={setRange} />
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
+      <div className="grid grid-cols-2 gap-[18px] lg:grid-cols-4">
         {[
           { label: sessions.label, value: String(sessions.value), sub: sessions.sub, href: "/schedule" },
           { label: "Active members", value: String(members.length), sub: members.length === 0 ? "No members yet" : "", href: "/members" },
@@ -124,7 +124,7 @@ export default function DashboardPage() {
             href: "/reports",
           },
         ].map((c) => (
-          <Link key={c.label} href={c.href} className="card-shadow block rounded-[14px] bg-surface px-[18px] py-4 hover:bg-row">
+          <Link key={c.label} href={c.href} className="card-shadow block rounded-2xl bg-surface px-[22px] py-4 hover:bg-row">
             <div className="text-[11px] tracking-wider text-muted uppercase">{c.label}</div>
             <div className="mt-1.5 text-[30px] font-semibold tracking-tight">{c.value}</div>
             <div className="mt-0.5 text-[12.5px] text-muted">{c.sub}</div>
@@ -208,7 +208,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-[18px]">
+      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 xl:grid-cols-4">
         <Card className="flex flex-col gap-3 px-[22px] py-5">
           <h5 className="text-[15.5px] font-semibold">Needs attention</h5>
           {balanceDue.slice(0, 4).map((m) => (
