@@ -230,7 +230,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-3">
         <Card className="flex flex-col gap-3 px-[22px] py-5">
           <h5 className="text-[15.5px] font-semibold">Needs attention</h5>
           {balanceDue.slice(0, 4).map((m) => (
@@ -286,7 +286,9 @@ export default function DashboardPage() {
           ))}
           {lowOnSessions.length === 0 && <div className="text-[13px] text-muted">Nobody&apos;s running low right now.</div>}
         </Card>
+      </div>
 
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(430px,1fr))] gap-[18px]">
         <Card className="flex flex-col gap-3.5 px-[22px] py-5">
           <div className="flex items-center justify-between">
             <h5 className="text-[15.5px] font-semibold">This week</h5>
