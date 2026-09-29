@@ -527,9 +527,8 @@ export function MemberProfile({
         </Card>
 
         <BodPodCard member={member} />
-      </div>
 
-      <Card className="px-[22px] py-5">
+        <Card className="px-[22px] py-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3.5">
           <div className="flex gap-1 rounded-[11px] border border-divider p-1">
             {(["upcoming", "completed"] as const).map((t) => (
@@ -597,25 +596,27 @@ export function MemberProfile({
 
             {upcoming.length === 0 && <div className="py-6 text-center text-[13.5px] text-muted">No upcoming sessions.</div>}
             {upcoming.map((h, i) => (
-              <div key={`${h.key}-${i}`} className="flex items-center gap-3.5 border-b border-divider py-2.5 last:border-b-0">
+              <div key={`${h.key}-${i}`} className="flex items-start gap-3 border-b border-divider py-2.5 last:border-b-0">
                 <input
                   type="checkbox"
                   checked={selectedKeys.has(h.key)}
                   onChange={() => toggleSelected(h.key)}
-                  className="h-4 w-4 flex-none"
+                  className="mt-0.5 h-4 w-4 flex-none"
                   aria-label={`Select ${h.type} on ${formatDateShort(new Date(`${h.iso}T00:00:00`))}`}
                 />
-                <span className="w-[112px] flex-none text-[13.5px] tabular-nums text-muted">{formatDateShort(new Date(`${h.iso}T00:00:00`))}</span>
-                <span className="w-[66px] flex-none text-[13px] font-semibold" style={{ color: sessionTypeColor(h.type, dark) }}>
-                  {shortLabel(h.type)}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[13.5px]">{h.type}</span>
-                {(PREBILL_TYPES as readonly string[]).includes(h.type) && (
-                  <span className={`w-[64px] flex-none text-right text-[11.5px] ${paidOccurrenceKeys.has(h.key) ? "text-ok" : "text-bad"}`}>
-                    {paidOccurrenceKeys.has(h.key) ? "Paid" : "Unpaid"}
+                <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13.5px]">
+                  <span className="font-semibold" style={{ color: sessionTypeColor(h.type, dark) }}>
+                    {shortLabel(h.type)}
                   </span>
-                )}
-                <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{h.coach}</span>
+                  <span className="min-w-0 truncate">{h.type}</span>
+                  <span className="tabular-nums text-muted">{formatDateShort(new Date(`${h.iso}T00:00:00`))}</span>
+                  <span className="text-muted">{h.coach}</span>
+                  {(PREBILL_TYPES as readonly string[]).includes(h.type) && (
+                    <span className={paidOccurrenceKeys.has(h.key) ? "text-ok" : "text-bad"}>
+                      {paidOccurrenceKeys.has(h.key) ? "Paid" : "Unpaid"}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </>
@@ -633,20 +634,23 @@ export function MemberProfile({
                   ? "bg-bad/10 text-bad"
                   : "bg-ok/15 text-ok";
               return (
-                <div key={`${h.iso}-${h.start}-${i}`} className="flex items-center gap-4 border-b border-divider py-2.5 last:border-b-0">
-                  <span className="w-[112px] flex-none text-[13.5px] tabular-nums text-muted">{formatDateShort(new Date(`${h.iso}T00:00:00`))}</span>
-                  <span className="w-[66px] flex-none text-[13px] font-semibold" style={{ color: sessionTypeColor(h.type, dark) }}>
-                    {shortLabel(h.type)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13.5px]">{h.type}</span>
-                  <span className="w-[104px] flex-none text-right text-[12.5px] text-muted">{h.coach}</span>
-                  <span className={`w-24 flex-none rounded-md py-0.5 text-center text-[11.5px] ${badgeClass}`}>{label}</span>
+                <div key={`${h.iso}-${h.start}-${i}`} className="flex flex-wrap items-center justify-between gap-2 border-b border-divider py-2.5 last:border-b-0">
+                  <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13.5px]">
+                    <span className="font-semibold" style={{ color: sessionTypeColor(h.type, dark) }}>
+                      {shortLabel(h.type)}
+                    </span>
+                    <span className="min-w-0 truncate">{h.type}</span>
+                    <span className="tabular-nums text-muted">{formatDateShort(new Date(`${h.iso}T00:00:00`))}</span>
+                    <span className="text-muted">{h.coach}</span>
+                  </div>
+                  <span className={`flex-none rounded-md px-2 py-0.5 text-center text-[11.5px] ${badgeClass}`}>{label}</span>
                 </div>
               );
             })}
           </>
         )}
-      </Card>
+        </Card>
+      </div>
 
       {currentCoach?.isAdmin && (
         <Card className="px-[22px] py-5">
