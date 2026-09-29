@@ -28,6 +28,17 @@ import { PRODUCT_CATEGORIES, type Product } from "@/types";
 const CATEGORIES = PRODUCT_CATEGORIES;
 const PAYMENT_METHODS = ["Card", "Cash", "E-transfer", "Package credit"] as const;
 
+/** A cart entry is a (product, quantity) pair tagged with who it's actually for — `forMemberId`
+    lets one card charge cover several different people's purchases at once (e.g. a company
+    account buying different things for 5 employees in one visit), not just the payer's own. Two
+    lines can share a `productId` when they're for different people. */
+interface CartLine {
+  id: string;
+  productId: string;
+  quantity: number;
+  forMemberId: string;
+}
+
 function POSInner() {
   const router = useRouter();
   const params = useSearchParams();
@@ -43,9 +54,12 @@ function POSInner() {
       params (a combined "Bill via POS" from the Upcoming cycle tally, when one coach bills on
       behalf of more than one coach's sessions in the same checkout). `coach` here is a coach's
       full name (baked into those links elsewhere), resolved to an id locally since matching is
-      now coachId-based. */
-  const initialCart = useMemo(() => {
-    const cart: Record<string, number> = {};
+      now coachId-based. Produces plain (productId, quantity) pairs — the resolved member is
+      attached as `forMemberId` when actually applied, below, since `member` may not have resolved
+      from `?member=` yet at the time this list is built. */
+  const initialCartItems = useMemo(() => {
+    const items: { productId: string; quantity: number }[] = [];
+    const byProduct = new Map<string, number>();
     const coachIdByName = (name: string) => coaches.find((c) => c.name === name)?.id;
     const itemParams = params.getAll("item");
     if (itemParams.length > 0) {
@@ -53,38 +67,35 @@ function POSInner() {
         const [type, coach, qtyStr] = decodeURIComponent(raw).split("|");
         const product = matchProduct(type, coach ? coachIdByName(coach) : undefined, products);
         if (!product) continue;
-        cart[product.id] = (cart[product.id] ?? 0) + Math.max(1, Number(qtyStr) || 1);
+        byProduct.set(product.id, (byProduct.get(product.id) ?? 0) + Math.max(1, Number(qtyStr) || 1));
       }
-      return cart;
+    } else {
+      const type = params.get("type");
+      if (type) {
+        const coach = params.get("coach") ? decodeURIComponent(params.get("coach")!) : undefined;
+        const product = matchProduct(decodeURIComponent(type), coach ? coachIdByName(coach) : undefined, products);
+        if (product) byProduct.set(product.id, Math.max(1, Number(params.get("qty")) || 1));
+      }
     }
-    const type = params.get("type");
-    if (!type) return cart;
-    const coach = params.get("coach") ? decodeURIComponent(params.get("coach")!) : undefined;
-    const product = matchProduct(decodeURIComponent(type), coach ? coachIdByName(coach) : undefined, products);
-    if (product) cart[product.id] = Math.max(1, Number(params.get("qty")) || 1);
-    return cart;
+    for (const [productId, quantity] of byProduct) items.push({ productId, quantity });
+    return items;
   }, [params, coaches, products]);
 
   const [category, setCategory] = useState<Product["category"]>("Personal Training");
   const [query, setQuery] = useState("");
-  const [cart, setCart] = useState<Record<string, number>>({});
-  // initialCart depends on `products` (DB-backed, loads async), so it isn't ready on the very
+  const [cart, setCart] = useState<CartLine[]>([]);
+  // initialCartItems depends on `products` (DB-backed, loads async), so it isn't ready on the very
   // first render the way it was when the catalog was a static import — apply it once products
   // have actually loaded, instead of as the useState initializer (which only ever runs once, on
   // mount, before that data exists).
   const appliedInitialCart = useRef(false);
-  useEffect(() => {
-    Promise.resolve().then(() => {
-      if (appliedInitialCart.current || products.length === 0) return;
-      appliedInitialCart.current = true;
-      if (Object.keys(initialCart).length > 0) setCart(initialCart);
-    });
-  }, [products, initialCart]);
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
   /** Selected member's id, or "" for Walk-in. null = not yet chosen, fall back to the ?member= query param once members load. */
   const [chosenMember, setChosenMember] = useState<string | null>(null);
-  const [onBehalf, setOnBehalf] = useState("");
+  /** Who the *next* item added to the cart is for — "" means the payer themselves. Each cart line
+      keeps whatever this was set to at the moment it was added/incremented. */
+  const [addFor, setAddFor] = useState("");
   const [linked, setLinked] = useState<SharedAccountLink[]>([]);
   const [discMode, setDiscMode] = useState<"%" | "$">("%");
   const [discValue, setDiscValue] = useState("");
@@ -103,11 +114,22 @@ function POSInner() {
   const member = chosenMember ?? members.find((m) => m.name === initialMemberName)?.id ?? "";
   const setMember = (id: string) => setChosenMember(id);
 
-  // Reset the "purchasing for" pick and cached links whenever the selected member changes.
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      if (appliedInitialCart.current || products.length === 0) return;
+      appliedInitialCart.current = true;
+      if (initialCartItems.length > 0) {
+        setCart(initialCartItems.map((it) => ({ id: crypto.randomUUID(), productId: it.productId, quantity: it.quantity, forMemberId: member })));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [products, initialCartItems]);
+
+  // Reset the "adding for" pick and cached links whenever the selected member changes.
   const [linksMember, setLinksMember] = useState(member);
   if (member !== linksMember) {
     setLinksMember(member);
-    setOnBehalf("");
+    setAddFor("");
     setLinked([]);
     setInvoiceUnpaid(false);
   }
@@ -137,10 +159,14 @@ function POSInner() {
   const memberName = selectedMember?.name ?? "Walk-in";
   const memberCoachId = selectedMember ? coaches.find((c) => c.name === selectedMember.coach)?.id : undefined;
 
+  function nameFor(memberId: string): string {
+    return members.find((m) => m.id === memberId)?.name ?? "";
+  }
+
   useHeaderAction(
     <HeaderButton
       onClick={() => {
-        setCart({});
+        setCart([]);
         setSaleError(null);
         setInvoiceUnpaid(false);
       }}
@@ -156,26 +182,54 @@ function POSInner() {
     return true;
   });
 
-  function unitPrice(p: Product): number {
-    const v = amounts[p.id];
+  function unitPrice(line: CartLine, product: Product): number {
+    const v = amounts[line.id];
     if (v != null && v !== "") return Math.max(0, Number(v) || 0);
-    return p.variablePrice ? 0 : p.price;
+    return product.variablePrice ? 0 : product.price;
   }
 
-  const lines = products.filter((p) => cart[p.id] > 0);
-  const gross = lines.reduce((a, p) => a + unitPrice(p) * cart[p.id], 0);
+  const cartLines = cart
+    .map((line) => ({ line, product: products.find((p) => p.id === line.productId) }))
+    .filter((x): x is { line: CartLine; product: Product } => !!x.product);
+
+  function qtyForProduct(productId: string): number {
+    return cart.filter((l) => l.productId === productId).reduce((a, l) => a + l.quantity, 0);
+  }
+
+  function addToCart(productId: string) {
+    const forMemberId = addFor || member;
+    setCart((c) => {
+      const idx = c.findIndex((l) => l.productId === productId && l.forMemberId === forMemberId);
+      if (idx !== -1) {
+        const next = [...c];
+        next[idx] = { ...next[idx], quantity: next[idx].quantity + 1 };
+        return next;
+      }
+      return [...c, { id: crypto.randomUUID(), productId, quantity: 1, forMemberId }];
+    });
+  }
+
+  function incLine(lineId: string) {
+    setCart((c) => c.map((l) => (l.id === lineId ? { ...l, quantity: l.quantity + 1 } : l)));
+  }
+  function decLine(lineId: string) {
+    setCart((c) => c.flatMap((l) => (l.id !== lineId ? [l] : l.quantity - 1 > 0 ? [{ ...l, quantity: l.quantity - 1 }] : [])));
+  }
+
+  const gross = cartLines.reduce((a, { line, product }) => a + unitPrice(line, product) * line.quantity, 0);
   const discRaw = Math.max(0, Number(discValue) || 0);
   const discAmt = Math.min(gross, discMode === "%" ? gross * (Math.min(100, discRaw) / 100) : discRaw);
   const subtotal = gross - discAmt;
   const tax = subtotal * taxRate;
   const total = subtotal + tax;
-  const needsAmount = lines.some((p) => p.variablePrice && !unitPrice(p));
+  const needsAmount = cartLines.some(({ line, product }) => product.variablePrice && !unitPrice(line, product));
   const wantsCardCharge = method === "Card" && !invoiceUnpaid;
 
   async function runCharge() {
-    // The card charge always goes to `member` (the selected/payer account) — "Purchasing for"
-    // only changes who the sale and any session credits are attributed to, per the shared-account
-    // model ("let someone else pay for this member's sessions").
+    // The card charge always goes to `member` (the selected/payer account) — each cart line's
+    // `forMemberId` only changes who the sale and any session credits are attributed to, per the
+    // shared-account model ("let someone else pay for this member's sessions"), now extended to
+    // cover several different beneficiaries within one combined charge.
     let chargedButUnrecorded = false;
     if (wantsCardCharge && member) {
       const result = await chargeCardOnFile(member, Math.round(total * 100), "CAD");
@@ -185,12 +239,18 @@ function POSInner() {
       }
       chargedButUnrecorded = true;
     }
-    const summary = lines.map((p) => (cart[p.id] > 1 ? `${p.name} x${cart[p.id]}` : p.name)).join(", ");
-    const lineItems = lines.map((p) => ({ description: p.name, quantity: cart[p.id], unitPrice: unitPrice(p) }));
-    if (discAmt > 0) lineItems.push({ description: "Discount", quantity: 1, unitPrice: -discAmt });
+    const summary = cartLines.map(({ line, product }) => (line.quantity > 1 ? `${product.name} x${line.quantity}` : product.name)).join(", ");
+    const lineItems = cartLines.map(({ line, product }) => ({
+      description: product.name,
+      quantity: line.quantity,
+      unitPrice: unitPrice(line, product),
+      forMemberId: line.forMemberId || undefined,
+      forMemberName: line.forMemberId ? nameFor(line.forMemberId) : undefined,
+    }));
+    if (discAmt > 0) lineItems.push({ description: "Discount", quantity: 1, unitPrice: -discAmt, forMemberId: undefined, forMemberName: undefined });
     try {
       const saleResult = await createSale({
-        memberId: (onBehalf || member) || undefined,
+        memberId: member || undefined,
         coachId: memberCoachId,
         summary,
         total,
@@ -212,24 +272,23 @@ function POSInner() {
       }
       const saleId = saleResult.data;
       chargedButUnrecorded = false;
-      if (member) {
-        const prebillItems = lines
-          .filter((p) => p.sessionType && (PREBILL_TYPES as readonly string[]).includes(p.sessionType))
-          .map((p) => ({
-            sessionType: p.sessionType as PreBillType,
-            unitPrice: unitPrice(p),
-            quantity: cart[p.id],
-            coachId: p.coachId ?? memberCoachId,
-          }));
-        if (prebillItems.length > 0) {
-          const creditResult = await createSessionCreditsForSale(saleId, onBehalf || member, prebillItems);
-          if (!creditResult.ok) {
-            setSaleError(`Sale recorded, but session credits failed to apply: ${creditResult.error} Apply them manually from the member's profile.`);
-            return;
-          }
+      const prebillItems = cartLines
+        .filter(({ line, product }) => product.sessionType && (PREBILL_TYPES as readonly string[]).includes(product.sessionType) && line.forMemberId)
+        .map(({ line, product }) => ({
+          sessionType: product.sessionType as PreBillType,
+          unitPrice: unitPrice(line, product),
+          quantity: line.quantity,
+          coachId: product.coachId ?? memberCoachId,
+          memberId: line.forMemberId,
+        }));
+      if (prebillItems.length > 0) {
+        const creditResult = await createSessionCreditsForSale(saleId, prebillItems);
+        if (!creditResult.ok) {
+          setSaleError(`Sale recorded, but session credits failed to apply: ${creditResult.error} Apply them manually from the member's profile.`);
+          return;
         }
       }
-      setCart({});
+      setCart([]);
       router.push(`/invoices/${saleId}`);
     } catch {
       // A genuine unexpected failure (e.g. the request itself never reached the server) - same
@@ -247,7 +306,7 @@ function POSInner() {
       <div className="flex flex-wrap items-end justify-between gap-5">
         <div>
           <h2 className="m-0 mb-0.5 text-[28px] font-medium tracking-tight">Point of sale</h2>
-          <div className="text-[13.5px] text-muted">{lines.length} item{lines.length === 1 ? "" : "s"} in current sale</div>
+          <div className="text-[13.5px] text-muted">{cartLines.length} item{cartLines.length === 1 ? "" : "s"} in current sale</div>
         </div>
         <div className="ml-auto flex flex-wrap gap-1 rounded-[11px] border border-divider p-1">
           {CATEGORIES.map((c) => (
@@ -274,13 +333,13 @@ function POSInner() {
             />
             <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] items-stretch gap-3">
               {visible.map((p) => {
-                const qty = cart[p.id] ?? 0;
+                const qty = qtyForProduct(p.id);
                 const color = p.sessionType ? sessionTypeColor(p.sessionType, dark) : undefined;
                 return (
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => setCart((c) => ({ ...c, [p.id]: (c[p.id] ?? 0) + 1 }))}
+                    onClick={() => addToCart(p.id)}
                     style={color ? { borderLeftColor: color, borderLeftWidth: 3 } : undefined}
                     className={`relative flex h-[136px] flex-col gap-1 rounded-xl border px-3.5 py-3 text-left hover:bg-row hover:border-accent ${
                       qty > 0 ? "border-accent" : "border-divider"
@@ -313,7 +372,7 @@ function POSInner() {
         <aside className="card-shadow sticky top-[82px] flex flex-col gap-3.5 rounded-2xl bg-surface px-[22px] py-5">
           <div className="flex items-center justify-between gap-3">
             <h5 className="text-[15.5px] font-semibold">Current sale</h5>
-            <button type="button" onClick={() => setCart({})} className="text-[12.5px] text-muted hover:text-bad">
+            <button type="button" onClick={() => setCart([])} className="text-[12.5px] text-muted hover:text-bad">
               Clear
             </button>
           </div>
@@ -338,46 +397,62 @@ function POSInner() {
             </div>
           )}
 
+          {linked.length > 0 && (
+            <div>
+              <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Adding items for</div>
+              <Select
+                value={addFor}
+                onChange={setAddFor}
+                placeholder="Themselves"
+                options={[{ value: "", label: "Themselves" }, ...linked.map((l) => ({ value: l.id, label: l.name }))]}
+                className="h-[34px] w-full rounded-lg px-2 text-[13.5px]"
+              />
+              <div className="mt-1 text-[11.5px] text-muted">Charged to {memberName}&apos;s card either way — this just tags who each new item is for.</div>
+            </div>
+          )}
+
           <div className="h-px bg-divider" />
 
-          {lines.length === 0 && <div className="py-4 text-[13.5px] text-muted">No items yet. Tap a product to start a sale.</div>}
+          {cartLines.length === 0 && <div className="py-4 text-[13.5px] text-muted">No items yet. Tap a product to start a sale.</div>}
 
           <div className="flex flex-col gap-2.5">
-            {lines.map((p) => {
-              const u = unitPrice(p);
-              const overridden = !p.variablePrice && amounts[p.id] != null && amounts[p.id] !== "" && Number(amounts[p.id]) !== p.price;
+            {cartLines.map(({ line, product: p }) => {
+              const u = unitPrice(line, p);
+              const overridden = !p.variablePrice && amounts[line.id] != null && amounts[line.id] !== "" && Number(amounts[line.id]) !== p.price;
+              const forOther = line.forMemberId && line.forMemberId !== member;
               return (
-                <div key={p.id} className="flex items-center gap-2.5">
+                <div key={line.id} className="flex items-center gap-2.5">
                   <div className="min-w-0 flex-1">
                     <div className="text-pretty text-[13.5px] font-medium">{p.name}</div>
+                    {forOther && <div className="text-[11.5px] text-accent">for {nameFor(line.forMemberId)}</div>}
                     <div className="flex items-center gap-1.5">
                       <span className={`text-[11.5px] tabular-nums ${overridden ? "text-accent" : "text-muted"}`}>
                         {p.variablePrice && !u ? "Enter an amount" : overridden ? `${money(u)} each · was ${money(p.price)}` : `${money(u)} each`}
                       </span>
                       <button
                         type="button"
-                        onClick={() => setEditing((s) => ({ ...s, [p.id]: !s[p.id] }))}
+                        onClick={() => setEditing((s) => ({ ...s, [line.id]: !s[line.id] }))}
                         title="Override price"
                         className="grid h-5 w-5 flex-none place-items-center rounded text-muted hover:bg-row hover:text-fg"
                       >
                         <PencilIcon size={11} />
                       </button>
                     </div>
-                    {(p.variablePrice || editing[p.id]) && (
+                    {(p.variablePrice || editing[line.id]) && (
                       <div className="mt-1 flex items-center gap-1.5">
                         <span className="text-xs text-muted">$</span>
                         <input
                           type="number"
                           min={0}
                           step={5}
-                          value={amounts[p.id] ?? ""}
+                          value={amounts[line.id] ?? ""}
                           placeholder={p.variablePrice ? "0.00" : p.price.toFixed(2)}
-                          onChange={(e) => setAmounts((a) => ({ ...a, [p.id]: e.target.value }))}
+                          onChange={(e) => setAmounts((a) => ({ ...a, [line.id]: e.target.value }))}
                           className="h-7 w-20 rounded-md border border-divider bg-transparent px-2 text-[12.5px] tabular-nums"
                         />
                         <button
                           type="button"
-                          onClick={() => setAmounts((a) => { const n = { ...a }; delete n[p.id]; return n; })}
+                          onClick={() => setAmounts((a) => { const n = { ...a }; delete n[line.id]; return n; })}
                           className="text-[11.5px] text-muted hover:text-fg"
                         >
                           Reset
@@ -388,21 +463,21 @@ function POSInner() {
                   <div className="flex flex-none items-center gap-0.5">
                     <button
                       type="button"
-                      onClick={() => setCart((c) => ({ ...c, [p.id]: Math.max(0, (c[p.id] ?? 0) - 1) }))}
+                      onClick={() => decLine(line.id)}
                       className="grid h-[26px] w-[26px] place-items-center rounded-lg border border-divider text-muted hover:bg-row hover:text-fg"
                     >
                       −
                     </button>
-                    <span className="w-6 text-center text-[13px] tabular-nums">{cart[p.id]}</span>
+                    <span className="w-6 text-center text-[13px] tabular-nums">{line.quantity}</span>
                     <button
                       type="button"
-                      onClick={() => setCart((c) => ({ ...c, [p.id]: (c[p.id] ?? 0) + 1 }))}
+                      onClick={() => incLine(line.id)}
                       className="grid h-[26px] w-[26px] place-items-center rounded-lg border border-divider text-muted hover:bg-row hover:text-fg"
                     >
                       +
                     </button>
                   </div>
-                  <span className="w-16 flex-none text-right text-[13.5px] font-medium tabular-nums">{money(u * cart[p.id])}</span>
+                  <span className="w-16 flex-none text-right text-[13.5px] font-medium tabular-nums">{money(u * line.quantity)}</span>
                 </div>
               );
             })}
@@ -437,19 +512,6 @@ function POSInner() {
               </button>
             </div>
           </div>
-
-          {linked.length > 0 && (
-            <div>
-              <div className="mb-1.5 text-[11.5px] tracking-wider text-muted uppercase">Purchasing for</div>
-              <Select
-                value={onBehalf}
-                onChange={setOnBehalf}
-                placeholder="Themselves"
-                options={[{ value: "", label: "Themselves" }, ...linked.map((l) => ({ value: l.id, label: l.name }))]}
-                className="h-[34px] w-full rounded-lg px-2 text-[13.5px]"
-              />
-            </div>
-          )}
 
           <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1.5 text-[13.5px] tabular-nums">
             {discAmt > 0 && (
@@ -501,7 +563,7 @@ function POSInner() {
 
           <button
             type="button"
-            disabled={lines.length === 0 || needsAmount || isPending || (wantsCardCharge && !member)}
+            disabled={cartLines.length === 0 || needsAmount || isPending || (wantsCardCharge && !member)}
             onClick={() => {
               setSaleError(null);
               if (wantsCardCharge && member && cardOnFile === null) {
@@ -512,7 +574,7 @@ function POSInner() {
             }}
             className="h-11 rounded-full bg-accent text-[14.5px] font-semibold text-on-accent disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {lines.length === 0 ? "Add items to charge" : isPending ? "Charging…" : invoiceUnpaid ? `Add ${money(total)} to account` : `Charge ${money(total)}`}
+            {cartLines.length === 0 ? "Add items to charge" : isPending ? "Charging…" : invoiceUnpaid ? `Add ${money(total)} to account` : `Charge ${money(total)}`}
           </button>
         </aside>
       </div>

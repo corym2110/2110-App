@@ -24,6 +24,14 @@ export default async function InvoicePage({ params }: { params: Promise<{ saleId
   }
 
   const sessionCredits = await getSessionCreditsForSale(saleId);
+  const creditGroupsMap = new Map<string, typeof sessionCredits>();
+  for (const c of sessionCredits) {
+    const key = c.memberName ?? invoice.member?.name ?? "";
+    const list = creditGroupsMap.get(key) ?? [];
+    list.push(c);
+    creditGroupsMap.set(key, list);
+  }
+  const creditGroups = [...creditGroupsMap.entries()];
 
   const invoiceNumber = invoice.id.slice(-8).toUpperCase();
   const lines = invoice.lineItems && invoice.lineItems.length > 0 ? invoice.lineItems : [{ description: invoice.summary, quantity: 1, unitPrice: invoice.total }];
@@ -123,7 +131,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ saleId
             </div>
             {lines.map((li, i) => (
               <div key={i} className="grid grid-cols-[1fr_70px_100px] gap-3 border-b border-divider py-3 text-[13.5px]">
-                <span className="font-semibold text-pretty">{li.description}</span>
+                <span>
+                  <span className="font-semibold text-pretty">{li.description}</span>
+                  {li.forMemberName && li.forMemberName !== invoice.member?.name && (
+                    <span className="block text-[11.5px] font-normal text-muted">for {li.forMemberName}</span>
+                  )}
+                </span>
                 <span className="text-center tabular-nums text-muted">{li.quantity}</span>
                 <span className="text-right tabular-nums">{signedMoney(li.quantity * li.unitPrice)}</span>
               </div>
@@ -181,21 +194,30 @@ export default async function InvoicePage({ params }: { params: Promise<{ saleId
           {sessionCredits.length > 0 && (
             <div className="mt-6 border-t border-divider pt-5 text-[13px]">
               <div className="font-semibold">Sessions this pays for</div>
-              <div className="mt-1.5 flex flex-col gap-1">
-                {sessionCredits.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between gap-3">
-                    <span>{c.sessionType}</span>
-                    {c.appliedIso ? (
-                      <span className="tabular-nums text-accent">
-                        {formatDateShort(new Date(`${c.appliedIso}T00:00:00`))}
-                        {c.appliedStart != null && ` ${clock(c.appliedStart)}`}
-                      </span>
-                    ) : (
-                      <span className="text-muted">Not yet scheduled — on file</span>
-                    )}
+              {/* A combined sale can cover several different people's credits at once — group by
+                  member so each person's sessions (and, as they get booked, the real dates) stay
+                  legible instead of reading as one unlabeled mixed list. A normal single-person
+                  sale has exactly one group, so it renders exactly as it always has. */}
+              {creditGroups.map(([memberName, credits]) => (
+                <div key={memberName ?? "unlabeled"} className="mt-2 first:mt-1.5">
+                  {creditGroups.length > 1 && <div className="mb-1 text-[11.5px] font-semibold text-muted">{memberName}</div>}
+                  <div className="flex flex-col gap-1">
+                    {credits.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-3">
+                        <span>{c.sessionType}</span>
+                        {c.appliedIso ? (
+                          <span className="tabular-nums text-accent">
+                            {formatDateShort(new Date(`${c.appliedIso}T00:00:00`))}
+                            {c.appliedStart != null && ` ${clock(c.appliedStart)}`}
+                          </span>
+                        ) : (
+                          <span className="text-muted">Not yet scheduled — on file</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
           )}
 

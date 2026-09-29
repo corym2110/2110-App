@@ -51,9 +51,23 @@ export interface UnpaidSale {
   createdAt: string;
 }
 
+/** The JSONB probe for "does this sale have a line item for this member" — catches a combined
+    sale's beneficiaries uniformly for every line type, session-backed or not, since every line
+    now carries `forMemberId` regardless. Postgres array-containment (`@>`) matches an element
+    that's a superset of the probe object, so other keys on that line (description, quantity, …)
+    don't need to match. */
+function beneficiaryProbe(memberId: string): string {
+  return JSON.stringify([{ forMemberId: memberId }]);
+}
+
 export async function getUnpaidSalesForMember(memberId: string): Promise<UnpaidSale[]> {
-  const rows = await db.sale.findMany({ where: { memberId, paid: false }, orderBy: { createdAt: "asc" } });
-  return rows.map((r) => ({ id: r.id, summary: r.summary, total: Number(r.total), notes: r.notes, createdAt: r.createdAt.toISOString() }));
+  const rows = await db.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Sale"
+    WHERE "paid" = false AND ("memberId" = ${memberId} OR "lineItems" @> ${beneficiaryProbe(memberId)}::jsonb)
+  `;
+  if (rows.length === 0) return [];
+  const sales = await db.sale.findMany({ where: { id: { in: rows.map((r) => r.id) } }, orderBy: { createdAt: "asc" } });
+  return sales.map((r) => ({ id: r.id, summary: r.summary, total: Number(r.total), notes: r.notes, createdAt: r.createdAt.toISOString() }));
 }
 
 export interface MemberSaleHistoryRow {
@@ -65,10 +79,15 @@ export interface MemberSaleHistoryRow {
   createdAt: string;
 }
 
-/** Every sale ever recorded for a member, newest first — the full purchase history, paid and unpaid alike. */
+/** Every sale ever recorded for a member, newest first — the full purchase history, paid and
+    unpaid alike, whether they were the payer or a beneficiary of a combined sale. */
 export async function getSalesForMember(memberId: string): Promise<MemberSaleHistoryRow[]> {
-  const rows = await db.sale.findMany({ where: { memberId }, orderBy: { createdAt: "desc" } });
-  return rows.map((r) => ({ id: r.id, summary: r.summary, total: Number(r.total), method: r.method, paid: r.paid, createdAt: r.createdAt.toISOString() }));
+  const rows = await db.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "Sale" WHERE "memberId" = ${memberId} OR "lineItems" @> ${beneficiaryProbe(memberId)}::jsonb
+  `;
+  if (rows.length === 0) return [];
+  const sales = await db.sale.findMany({ where: { id: { in: rows.map((r) => r.id) } }, orderBy: { createdAt: "desc" } });
+  return sales.map((r) => ({ id: r.id, summary: r.summary, total: Number(r.total), method: r.method, paid: r.paid, createdAt: r.createdAt.toISOString() }));
 }
 
 export async function markSalePaid(saleId: string, memberId: string): Promise<void> {

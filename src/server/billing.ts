@@ -156,60 +156,79 @@ export async function getBillableTally(periodFrom: string, periodTo: string, coa
     member's soonest not-yet-covered upcoming session of that type, looking up to 180 days
     ahead. Any units bought beyond what's currently on the calendar are created unapplied
     (available), same as an unused credit from a period bill. */
+/** One card charge can now cover several different people's purchases at once (e.g. a company
+    account paying for multiple employees) — each item carries its own `memberId` rather than the
+    whole call being scoped to one member. Occurrence data is fetched once and shared, but the
+    "which of this person's occurrences are already covered" and "which upcoming slots can this
+    auto-apply to" logic still runs per member, exactly as it did when there was only ever one. */
 export async function createSessionCreditsForSale(
   saleId: string,
-  memberId: string,
-  items: { sessionType: PreBillType; unitPrice: number; quantity: number; coachId?: string }[],
+  items: { sessionType: PreBillType; unitPrice: number; quantity: number; coachId?: string; memberId: string }[],
 ): Promise<ActionResult> {
   return runAction(async () => {
     const validItems = parseInput(PreBillSaleItemsSchema, items);
     const relevant = validItems.filter((i) => PREBILL_TYPES.includes(i.sessionType));
     if (relevant.length === 0) return;
-  
-    const member = await db.member.findUniqueOrThrow({ where: { id: memberId } });
-    const name = fullName(member);
+
+    const memberIds = [...new Set(relevant.map((i) => i.memberId))];
     const todayIso = isoOf(new Date());
     const horizonIso = isoOf(addDays(new Date(), 180));
-  
-    const [byIso, existingCredits] = await Promise.all([
+
+    const [byIso, members, existingCredits] = await Promise.all([
       getOccurrencesForRange(todayIso, horizonIso),
-      db.sessionCredit.findMany({ where: { memberId, appliedOccurrenceKey: { not: null } }, select: { appliedOccurrenceKey: true } }),
+      db.member.findMany({ where: { id: { in: memberIds } } }),
+      db.sessionCredit.findMany({ where: { memberId: { in: memberIds }, appliedOccurrenceKey: { not: null } }, select: { memberId: true, appliedOccurrenceKey: true } }),
     ]);
-    const covered = new Set(existingCredits.map((c) => c.appliedOccurrenceKey));
-  
-    const slotsByType = new Map<PreBillType, { key: string; coachId: string }[]>();
-    for (const occs of Object.values(byIso)) {
-      for (const occ of occs) {
-        const type = occ.type as PreBillType;
-        if (!PREBILL_TYPES.includes(type)) continue;
-        const involved = occ.roster && occ.roster.length > 0 ? occ.roster.includes(name) : occ.name === name;
-        if (!involved || covered.has(occ.key)) continue;
-        const list = slotsByType.get(type) ?? [];
-        list.push({ key: occ.key, coachId: occ.coach });
-        slotsByType.set(type, list);
-      }
+    const memberById = new Map(members.map((m) => [m.id, m]));
+    const coveredByMember = new Map<string, Set<string>>();
+    for (const c of existingCredits) {
+      const set = coveredByMember.get(c.memberId) ?? new Set<string>();
+      set.add(c.appliedOccurrenceKey!);
+      coveredByMember.set(c.memberId, set);
     }
-  
+
+    // Per-member slot lists — a slot found for one beneficiary is never visible to another's takeSlot().
+    const slotsByTypeByMember = new Map<string, Map<PreBillType, { key: string; coachId: string }[]>>();
+    for (const memberId of memberIds) {
+      const member = memberById.get(memberId);
+      if (!member) continue;
+      const name = fullName(member);
+      const covered = coveredByMember.get(memberId) ?? new Set<string>();
+      const slotsByType = new Map<PreBillType, { key: string; coachId: string }[]>();
+      for (const occs of Object.values(byIso)) {
+        for (const occ of occs) {
+          const type = occ.type as PreBillType;
+          if (!PREBILL_TYPES.includes(type)) continue;
+          const involved = occ.roster && occ.roster.length > 0 ? occ.roster.includes(name) : occ.name === name;
+          if (!involved || covered.has(occ.key)) continue;
+          const list = slotsByType.get(type) ?? [];
+          list.push({ key: occ.key, coachId: occ.coach });
+          slotsByType.set(type, list);
+        }
+      }
+      slotsByTypeByMember.set(memberId, slotsByType);
+    }
+
     // Only ever auto-apply a credit to a session taught by the same coach it was priced for — a
     // client trained by two different coaches doing the same session type (different rates) must
     // never have one coach's credit silently cover the other's session. No matching-coach slot
     // yet on the calendar means the credit is created unapplied, same as genuine overflow.
-    function takeSlot(type: PreBillType, coachId?: string): { key: string; coachId: string } | undefined {
-      const list = slotsByType.get(type);
+    function takeSlot(memberId: string, type: PreBillType, coachId?: string): { key: string; coachId: string } | undefined {
+      const list = slotsByTypeByMember.get(memberId)?.get(type);
       if (!list || list.length === 0) return undefined;
       if (!coachId) return list.shift();
       const idx = list.findIndex((s) => s.coachId === coachId);
       return idx === -1 ? undefined : list.splice(idx, 1)[0];
     }
-  
+
     await db.$transaction(async (tx) => {
       for (const item of relevant) {
         for (let i = 0; i < item.quantity; i++) {
-          const slot = takeSlot(item.sessionType, item.coachId);
+          const slot = takeSlot(item.memberId, item.sessionType, item.coachId);
           await tx.sessionCredit.create({
             data: {
               saleId,
-              memberId,
+              memberId: item.memberId,
               sessionType: item.sessionType,
               unitPrice: item.unitPrice,
               // A credit is priced for a specific coach's rate, so it stays scoped to that coach —
@@ -223,8 +242,8 @@ export async function createSessionCreditsForSale(
         }
       }
     });
-  
-    revalidatePath(`/members/${memberId}`);
+
+    for (const memberId of memberIds) revalidatePath(`/members/${memberId}`);
     revalidatePath("/schedule");
   });
 }
@@ -242,6 +261,10 @@ export interface SessionCreditRow {
       date alone isn't always enough to tell them apart. */
   appliedStart: number | null;
   createdAt: string;
+  memberId: string;
+  /** Only needed when a row's member might not already be obvious from context (e.g. a combined
+      sale's "sessions this pays for" list, mixing several people's credits) — null when not resolved. */
+  memberName: string | null;
 }
 
 async function withStartTimes(rows: Omit<SessionCreditRow, "appliedStart">[]): Promise<SessionCreditRow[]> {
@@ -256,9 +279,11 @@ async function withStartTimes(rows: Omit<SessionCreditRow, "appliedStart">[]): P
 }
 
 /** Every session credit this specific sale paid for — the "sessions this pays for" list on the
-    receipt, whether that sale came from a period bill or a one-off POS purchase. */
+    receipt, whether that sale came from a period bill or a one-off POS purchase. Includes each
+    row's member name since a combined sale (one charge covering several people) mixes different
+    beneficiaries' credits in this one list — unlabeled, they'd read as a jumble. */
 export async function getSessionCreditsForSale(saleId: string): Promise<SessionCreditRow[]> {
-  const rows = await db.sessionCredit.findMany({ where: { saleId }, orderBy: { appliedIso: "asc" } });
+  const rows = await db.sessionCredit.findMany({ where: { saleId }, orderBy: { appliedIso: "asc" }, include: { member: true } });
   return withStartTimes(
     rows.map((r) => ({
       id: r.id,
@@ -269,6 +294,8 @@ export async function getSessionCreditsForSale(saleId: string): Promise<SessionC
       appliedOccurrenceKey: r.appliedOccurrenceKey,
       appliedIso: r.appliedIso,
       createdAt: r.createdAt.toISOString(),
+      memberId: r.memberId,
+      memberName: fullName(r.member),
     })),
   );
 }
@@ -287,6 +314,8 @@ export async function getSessionCreditsForMember(memberId: string): Promise<Sess
       appliedOccurrenceKey: r.appliedOccurrenceKey,
       appliedIso: r.appliedIso,
       createdAt: r.createdAt.toISOString(),
+      memberId: r.memberId,
+      memberName: null,
     })),
   );
 }

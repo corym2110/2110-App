@@ -65,6 +65,11 @@ export interface ClientSalesRow {
   count: number;
 }
 
+/** A combined sale (one card charge covering several different people, via each line item's own
+    `forMemberId`) shouldn't dump its whole total on the payer — split proportionally by each
+    beneficiary's share of the pre-tax line total, so tax/discount get allocated the same way and
+    the split still sums back to exactly `sale.total`. A normal single-person sale has only one
+    distinct beneficiary either way, so this reduces to the old "whole total to the payer" behavior. */
 export async function getSalesSummaryByClient(range: ReportRangeKey, coachId?: string): Promise<ClientSalesRow[]> {
   const validRange = parseInput(ReportRangeKeySchema, range);
   const scopedCoachId = await ownScopeOrRequested(coachId);
@@ -75,12 +80,47 @@ export async function getSalesSummaryByClient(range: ReportRangeKey, coachId?: s
   });
 
   const byMember = new Map<string, ClientSalesRow>();
+  function bump(memberId: string, name: string, amount: number) {
+    const cur = byMember.get(memberId) ?? { memberId, name, total: 0, count: 0 };
+    cur.total += amount;
+    byMember.set(memberId, cur);
+  }
+  function bumpCount(memberId: string) {
+    const cur = byMember.get(memberId);
+    if (cur) cur.count += 1;
+  }
+
   for (const s of sales) {
     if (!s.member || !s.memberId) continue;
-    const cur = byMember.get(s.memberId) ?? { memberId: s.memberId, name: `${s.member.firstName} ${s.member.lastName}`.trim(), total: 0, count: 0 };
-    cur.total += Number(s.total);
-    cur.count += 1;
-    byMember.set(s.memberId, cur);
+    const payerId = s.memberId;
+    const payerName = `${s.member.firstName} ${s.member.lastName}`.trim();
+    const total = Number(s.total);
+    const lineItems = s.lineItems as { forMemberId?: string; forMemberName?: string; quantity: number; unitPrice: number }[] | null;
+
+    if (!lineItems || lineItems.length === 0) {
+      bump(payerId, payerName, total);
+      bumpCount(payerId);
+      continue;
+    }
+
+    const lineTotals = lineItems.map((li) => ({
+      id: li.forMemberId || payerId,
+      name: li.forMemberId ? (li.forMemberName ?? payerName) : payerName,
+      amount: li.quantity * li.unitPrice,
+    }));
+    const grossOfSale = lineTotals.reduce((a, l) => a + l.amount, 0);
+    const touched = new Set<string>();
+    if (grossOfSale === 0) {
+      // Fully discounted / zero-value sale — nothing to split proportionally.
+      bump(payerId, payerName, total);
+      touched.add(payerId);
+    } else {
+      for (const l of lineTotals) {
+        bump(l.id, l.name, (l.amount / grossOfSale) * total);
+        touched.add(l.id);
+      }
+    }
+    for (const id of touched) bumpCount(id);
   }
 
   return [...byMember.values()].sort((a, b) => b.total - a.total).slice(0, 15);

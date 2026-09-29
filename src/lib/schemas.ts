@@ -57,6 +57,11 @@ export const SaleLineItemSchema = z.object({
   quantity: z.number().int("Quantity must be a whole number.").min(1, "Quantity must be at least 1."),
   // Intentionally not min(0) — a discount line is a real negative unitPrice (e.g. { description: "Discount", unitPrice: -12.5 }).
   unitPrice: z.number().finite(),
+  /** Who this specific line is actually for — lets one combined sale (one card charge, one payer)
+      cover several different people's purchases at once. Absent = the sale's own member (the
+      normal, single-person case). */
+  forMemberId: z.string().optional(),
+  forMemberName: z.string().optional(),
 });
 export type SaleLineItem = z.infer<typeof SaleLineItemSchema>;
 
@@ -198,6 +203,9 @@ export const PreBillSaleItemSchema = z.object({
   unitPrice: z.number().min(0, "Unit price can't be negative."),
   quantity: z.number().int("Quantity must be a whole number.").min(1, "Quantity must be at least 1.").max(1000),
   coachId: z.string().min(1).optional(),
+  /** Who these credits actually belong to — lets one combined sale cover several different
+      people's session credits, not just the payer's own. */
+  memberId: z.string().min(1, "A member is required for each pre-billed item."),
 });
 export const PreBillSaleItemsSchema = z.array(PreBillSaleItemSchema).max(200);
 
