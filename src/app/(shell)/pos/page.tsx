@@ -173,6 +173,9 @@ function POSInner() {
   const wantsCardCharge = method === "Card" && !invoiceUnpaid;
 
   async function runCharge() {
+    // The card charge always goes to `member` (the selected/payer account) — "Purchasing for"
+    // only changes who the sale and any session credits are attributed to, per the shared-account
+    // model ("let someone else pay for this member's sessions").
     let chargedButUnrecorded = false;
     if (wantsCardCharge && member) {
       const result = await chargeCardOnFile(member, Math.round(total * 100), "CAD");
@@ -187,7 +190,7 @@ function POSInner() {
     if (discAmt > 0) lineItems.push({ description: "Discount", quantity: 1, unitPrice: -discAmt });
     try {
       const saleResult = await createSale({
-        memberId: member || undefined,
+        memberId: (onBehalf || member) || undefined,
         coachId: memberCoachId,
         summary,
         total,
@@ -219,7 +222,7 @@ function POSInner() {
             coachId: p.coachId ?? memberCoachId,
           }));
         if (prebillItems.length > 0) {
-          const creditResult = await createSessionCreditsForSale(saleId, member, prebillItems);
+          const creditResult = await createSessionCreditsForSale(saleId, onBehalf || member, prebillItems);
           if (!creditResult.ok) {
             setSaleError(`Sale recorded, but session credits failed to apply: ${creditResult.error} Apply them manually from the member's profile.`);
             return;
