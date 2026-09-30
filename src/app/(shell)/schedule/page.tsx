@@ -11,7 +11,7 @@ import { useAvailabilityForCoaches } from "@/lib/useCoachAvailability";
 import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
 import { moveOccurrence, type Occurrence } from "@/server/schedule";
 import { addDays, formatDateShort, formatDateLong, isoOf, mondayOf, startOfToday, MONTHS } from "@/lib/time";
-import { useMembers } from "@/lib/useMembers";
+import { useMemberNames } from "@/lib/useMembers";
 import { useCoaches, useCurrentCoach } from "@/lib/useCoaches";
 import { DayColumn } from "@/components/schedule/DayColumn";
 import { MonthGrid } from "@/components/schedule/MonthGrid";
@@ -41,7 +41,7 @@ function ScheduleInner() {
   const [editing, setEditing] = useState<Occurrence | null>(null);
 
   const dark = useThemeStore((s) => s.theme === "dark");
-  const members = useMembers();
+  const members = useMemberNames();
   const coaches = useCoaches();
   const currentCoach = useCurrentCoach();
   const allCoaches = useMemo(() => [{ id: "all", name: "All coaches" }, ...coaches], [coaches]);

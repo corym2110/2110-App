@@ -11,7 +11,8 @@ import { Select } from "@/components/ui/Select";
 import { PaidWithControl } from "@/components/schedule/PaidWithControl";
 import { PREBILL_TYPES } from "@/lib/prebill";
 import type { CoachRow } from "@/server/coaches";
-import type { AttendanceStatus, Member } from "@/types";
+import type { AttendanceStatus } from "@/types";
+import type { MemberOption } from "@/server/members";
 
 const STATUS_OPTIONS: AttendanceStatus[] = ["Checked in", "No-show", "Late cancel"];
 
@@ -27,7 +28,7 @@ export function DetailPanel({
   onDataChanged,
 }: {
   occurrence: Occurrence;
-  members: Member[];
+  members: MemberOption[];
   coaches: CoachRow[];
   attendance: Record<string, string>;
   waitlists: Record<string, string[]>;

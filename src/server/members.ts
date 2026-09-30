@@ -91,6 +91,22 @@ function toMember(row: MemberRow, lastSession: string, riskReasons: string[], la
   };
 }
 
+export interface MemberOption {
+  id: string;
+  name: string;
+}
+
+/** Bare id/name pairs for pickers/links that don't need the full `Member` payload — avoids
+    dragging `getMembers()`'s much heavier churn-risk/session-credit/follow-up computation onto
+    screens (Schedule, Classes) that only ever show a name and link to a profile. */
+export async function getMemberNames(): Promise<MemberOption[]> {
+  const rows = await db.member.findMany({
+    select: { id: true, firstName: true, lastName: true },
+    orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+  });
+  return rows.map((r) => ({ id: r.id, name: fullName(r) }));
+}
+
 export async function getMembers(): Promise<Member[]> {
   const rows = await db.member.findMany({
     include: { coach: true, sales: ALL_SALES_INCLUDE },

@@ -11,7 +11,7 @@ import { BookingDialog } from "@/components/schedule/BookingDialog";
 import { setAttendanceStatus, addToClass, addToWaitlist, removeFromWaitlist, promoteFromWaitlist, cancelRosterMember } from "@/server/schedule";
 import { activeRosterCount, addDays, clock, formatDateShort, formatDateLong, initialsOf, isoOf, mondayOf, slotKey, startOfToday } from "@/lib/time";
 import { capacityOf, sessionTypeColor } from "@/data/mock/sessionTypes";
-import { useMembers } from "@/lib/useMembers";
+import { useMemberNames } from "@/lib/useMembers";
 import { useCoaches } from "@/lib/useCoaches";
 import type { AttendanceStatus, SessionTypeName } from "@/types";
 
@@ -27,7 +27,7 @@ export default function ClassesPage() {
   const [, startTransition] = useTransition();
 
   const dark = useThemeStore((s) => s.theme === "dark");
-  const members = useMembers();
+  const members = useMemberNames();
   const coaches = useCoaches();
   const coachName = (id: string) => coaches.find((c) => c.id === id)?.name ?? id;
 

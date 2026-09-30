@@ -8,7 +8,8 @@ import { addBooking, addSeries, cancelOccurrence, type Occurrence } from "@/serv
 import { offReason } from "@/lib/availability";
 import { addDays, clock, dowIndex, DOW_LABELS, formatDateLong, isoOf } from "@/lib/time";
 import type { CoachRow } from "@/server/coaches";
-import type { CoachId, DayOfWeek, Member, SessionTypeName } from "@/types";
+import type { CoachId, DayOfWeek, SessionTypeName } from "@/types";
+import type { MemberOption } from "@/server/members";
 import { XIcon } from "@/components/ui/icons";
 import { Select } from "@/components/ui/Select";
 import { Combobox } from "@/components/ui/Combobox";
@@ -36,7 +37,7 @@ export function BookingDialog({
   start: number;
   onClose: () => void;
   onSaved: () => void;
-  members: Member[];
+  members: MemberOption[];
   coaches: CoachRow[];
   dayOccurrences?: Occurrence[];
   editing?: Occurrence;

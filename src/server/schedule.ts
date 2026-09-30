@@ -119,6 +119,26 @@ export async function getOccurrencesForDate(iso: string, coachId?: string): Prom
   return byIso[iso] ?? [];
 }
 
+export interface ScheduleRangePayload {
+  occurrencesByIso: Record<string, Occurrence[]>;
+  attendance: Record<string, string>;
+  waitlists: Record<string, string[]>;
+  classAdds: Record<string, string[]>;
+}
+
+/** Everything the Schedule/Classes views need for a date range, in one round trip — the same three
+    queries `getOccurrencesForRange`/`getAttendanceForRange`/`getWaitlistDataForRange` already ran,
+    just called from inside a single Server Action instead of three separate client-triggered ones
+    (each of those was its own network hop, not just its own DB query). */
+export async function getScheduleRangeData(fromIso: string, toIso: string, coachId?: string): Promise<ScheduleRangePayload> {
+  const [occurrencesByIso, attendance, waitlistData] = await Promise.all([
+    getOccurrencesForRange(fromIso, toIso, coachId),
+    getAttendanceForRange(fromIso, toIso),
+    getWaitlistDataForRange(fromIso, toIso),
+  ]);
+  return { occurrencesByIso, attendance, waitlists: waitlistData.waitlists, classAdds: waitlistData.classAdds };
+}
+
 /** Most recent past-or-today occurrence (date + start time) for each name, from real bookings and
     recurring series alike — used to show a member's real "last session" instead of a fixed string. */
 export async function getLastSessionByName(names: string[]): Promise<Record<string, { iso: string; start: number }>> {

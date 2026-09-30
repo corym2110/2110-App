@@ -1,12 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  getOccurrencesForRange,
-  getAttendanceForRange,
-  getWaitlistDataForRange,
-  type Occurrence,
-} from "@/server/schedule";
+import { getScheduleRangeData, type Occurrence } from "@/server/schedule";
 
 export interface ScheduleRangeData {
   occurrencesByIso: Record<string, Occurrence[]>;
@@ -26,15 +21,11 @@ export function useScheduleRange(fromIso: string, toIso: string, coachId?: strin
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(() => {
-    Promise.all([
-      getOccurrencesForRange(fromIso, toIso, coachId),
-      getAttendanceForRange(fromIso, toIso),
-      getWaitlistDataForRange(fromIso, toIso),
-    ]).then(([occ, att, wl]) => {
+    getScheduleRangeData(fromIso, toIso, coachId).then(({ occurrencesByIso: occ, attendance: att, waitlists, classAdds }) => {
       setOccurrencesByIso(occ);
       setAttendance(att);
-      setWaitlists(wl.waitlists);
-      setClassAdds(wl.classAdds);
+      setWaitlists(waitlists);
+      setClassAdds(classAdds);
       setLoading(false);
     });
   }, [fromIso, toIso, coachId]);

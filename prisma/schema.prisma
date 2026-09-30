@@ -81,6 +81,10 @@ model RecurringSeries {
   toIso         String?
   excludedDates String[] @default([])
   createdAt     DateTime @default(now())
+
+  @@index([fromIso])
+  @@index([toIso])
+  @@index([coachId])
 }
 
 model AttendanceRecord {
