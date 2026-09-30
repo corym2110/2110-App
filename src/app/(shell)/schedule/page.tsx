@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { HeaderButton } from "@/components/ui/HeaderButton";
 import { Select } from "@/components/ui/Select";
@@ -12,7 +12,7 @@ import { useScheduleRange, occurrencesOn } from "@/lib/useSchedule";
 import { moveOccurrence, type Occurrence } from "@/server/schedule";
 import { addDays, formatDateShort, formatDateLong, isoOf, mondayOf, startOfToday, MONTHS } from "@/lib/time";
 import { useMembers } from "@/lib/useMembers";
-import { useCoaches } from "@/lib/useCoaches";
+import { useCoaches, useCurrentCoach } from "@/lib/useCoaches";
 import { DayColumn } from "@/components/schedule/DayColumn";
 import { MonthGrid } from "@/components/schedule/MonthGrid";
 import { DetailPanel } from "@/components/schedule/DetailPanel";
@@ -43,7 +43,19 @@ function ScheduleInner() {
   const dark = useThemeStore((s) => s.theme === "dark");
   const members = useMembers();
   const coaches = useCoaches();
+  const currentCoach = useCurrentCoach();
   const allCoaches = useMemo(() => [{ id: "all", name: "All coaches" }, ...coaches], [coaches]);
+
+  // Defaults the schedule to the signed-in coach's own week rather than "All coaches" — a one-time
+  // default on load, tracked with a ref (not a `coachFilter === "all"` check) so a coach who
+  // deliberately switches back to "All coaches" later doesn't get silently reset to their own view.
+  const didDefaultCoachFilter = useRef(false);
+  useEffect(() => {
+    if (!didDefaultCoachFilter.current && currentCoach) {
+      setCoachFilter(currentCoach.id);
+      didDefaultCoachFilter.current = true;
+    }
+  }, [currentCoach]);
 
   useHeaderAction(
     <HeaderButton onClick={() => setDraft({ iso: isoOf(addDays(startOfToday(), offset)), start: 540 })}>
