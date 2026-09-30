@@ -1,22 +1,10 @@
-"use client";
+import { getCurrentCoach } from "@/server/coaches";
+import { ShellLayoutClient } from "@/components/shell/ShellLayoutClient";
 
-import { Sidebar } from "@/components/shell/Sidebar";
-import { Header } from "@/components/shell/Header";
-import { useUIStore } from "@/stores/ui";
-
-export default function ShellLayout({ children }: { children: React.ReactNode }) {
-  const collapsed = useUIStore((s) => s.collapsed);
-
-  return (
-    <div className="flex min-h-screen w-full bg-bg text-fg">
-      <Sidebar />
-      <div
-        className="flex min-w-0 flex-1 flex-col transition-[margin-left] duration-150 ease-out"
-        style={{ marginLeft: collapsed ? 76 : 232 }}
-      >
-        <Header />
-        <main className="flex min-h-0 flex-1 flex-col gap-[18px] px-[30px] pb-7 pt-6">{children}</main>
-      </div>
-    </div>
-  );
+/** Resolves the signed-in coach once, server-side, before anything is sent to the browser — every
+    `useCurrentCoach()` in the tree below reads this same value via CurrentCoachProvider instead of
+    each independently re-fetching (see `src/lib/useCoaches.ts` for why that mattered). */
+export default async function ShellLayout({ children }: { children: React.ReactNode }) {
+  const coach = await getCurrentCoach();
+  return <ShellLayoutClient coach={coach}>{children}</ShellLayoutClient>;
 }
