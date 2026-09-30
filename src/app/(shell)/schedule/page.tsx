@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { HeaderButton } from "@/components/ui/HeaderButton";
 import { Select } from "@/components/ui/Select";
@@ -29,9 +29,14 @@ interface DragState {
 
 function ScheduleInner() {
   const params = useSearchParams();
+  const currentCoach = useCurrentCoach();
   const [view, setView] = useState<View>("Week");
   const [offset, setOffset] = useState(0);
-  const [coachFilter, setCoachFilter] = useState<"all" | CoachId>("all");
+  // Defaults to the signed-in coach's own week rather than "All coaches" — a lazy initializer
+  // (not an effect) since `currentCoach` is resolved server-side and available synchronously from
+  // the very first render (see CurrentCoachProvider), so there's no async gap to react to, and no
+  // risk of an initial "all coaches" fetch firing before a second, corrective one narrows it down.
+  const [coachFilter, setCoachFilter] = useState<"all" | CoachId>(() => currentCoach?.id ?? "all");
   const [selected, setSelected] = useState<Occurrence | null>(null);
   const [draft, setDraft] = useState<{ iso: string; start: number } | null>(() =>
     params.get("new") ? { iso: isoOf(startOfToday()), start: 540 } : null,
@@ -43,19 +48,7 @@ function ScheduleInner() {
   const dark = useThemeStore((s) => s.theme === "dark");
   const members = useMemberNames();
   const coaches = useCoaches();
-  const currentCoach = useCurrentCoach();
   const allCoaches = useMemo(() => [{ id: "all", name: "All coaches" }, ...coaches], [coaches]);
-
-  // Defaults the schedule to the signed-in coach's own week rather than "All coaches" — a one-time
-  // default on load, tracked with a ref (not a `coachFilter === "all"` check) so a coach who
-  // deliberately switches back to "All coaches" later doesn't get silently reset to their own view.
-  const didDefaultCoachFilter = useRef(false);
-  useEffect(() => {
-    if (!didDefaultCoachFilter.current && currentCoach) {
-      setCoachFilter(currentCoach.id);
-      didDefaultCoachFilter.current = true;
-    }
-  }, [currentCoach]);
 
   useHeaderAction(
     <HeaderButton onClick={() => setDraft({ iso: isoOf(addDays(startOfToday(), offset)), start: 540 })}>
