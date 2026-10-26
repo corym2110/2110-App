@@ -5,6 +5,7 @@ import { db } from "./db";
 import { parseInput } from "@/lib/validate";
 import { NewSessionTypeInputSchema, type NewSessionTypeInput } from "@/lib/schemas";
 import { runAction, type ActionResult } from "@/lib/actionResult";
+import { getCurrentCoach } from "./coaches";
 import { SESSION_TYPES } from "@/data/mock/sessionTypes";
 import type { SessionTypeDef } from "@/types";
 
@@ -18,6 +19,8 @@ export async function getSessionTypes(): Promise<SessionTypeDef[]> {
 
 export async function addSessionType(input: NewSessionTypeInput): Promise<ActionResult<string>> {
   return runAction(async () => {
+    const requester = await getCurrentCoach();
+    if (!requester?.isAdmin) throw new Error("Only an admin can add a session type.");
     const data = parseInput(NewSessionTypeInputSchema, input);
     if (SESSION_TYPES.some((t) => t.name.toLowerCase() === data.name.toLowerCase())) {
       throw new Error("That name is already a built-in session type.");

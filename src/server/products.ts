@@ -5,6 +5,7 @@ import { db } from "./db";
 import { parseInput } from "@/lib/validate";
 import { ProductInputSchema, type ProductInput } from "@/lib/schemas";
 import { runAction, type ActionResult } from "@/lib/actionResult";
+import { getCurrentCoach } from "./coaches";
 import type { Product } from "@/types";
 
 export type { ProductInput };
@@ -40,6 +41,8 @@ export async function getProducts(): Promise<Product[]> {
 
 export async function addProduct(input: ProductInput): Promise<ActionResult<string>> {
   return runAction(async () => {
+    const requester = await getCurrentCoach();
+    if (!requester?.isAdmin) throw new Error("Only an admin can add a product.");
     const data = parseInput(ProductInputSchema, input);
     const row = await db.product.create({
       data: {
@@ -61,6 +64,8 @@ export async function addProduct(input: ProductInput): Promise<ActionResult<stri
 
 export async function updateProduct(id: string, input: ProductInput): Promise<ActionResult> {
   return runAction(async () => {
+    const requester = await getCurrentCoach();
+    if (!requester?.isAdmin) throw new Error("Only an admin can edit a product.");
     const data = parseInput(ProductInputSchema, input);
     await db.product.update({
       where: { id },
@@ -83,6 +88,9 @@ export async function updateProduct(id: string, input: ProductInput): Promise<Ac
 /** Soft delete — keeps the row (and its price) intact for any historical Sale.lineItems that
     already reference it by name; just drops it out of POS/Settings going forward. */
 export async function deactivateProduct(id: string): Promise<void> {
+  const requester = await getCurrentCoach();
+  if (!requester?.isAdmin) throw new Error("Only an admin can deactivate a product.");
+
   await db.product.update({ where: { id }, data: { active: false } });
   revalidatePath("/settings");
   revalidatePath("/pos");

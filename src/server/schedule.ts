@@ -561,6 +561,10 @@ export async function addTimeOff(coachId: string, entry: TimeOffEntry): Promise<
 }
 
 export async function removeTimeOff(timeOffId: string): Promise<void> {
+  const requester = await getCurrentCoach();
+  const row = await db.timeOff.findUniqueOrThrow({ where: { id: timeOffId } });
+  if (!requester || (requester.id !== row.coachId && !requester.isAdmin)) throw new Error("You can only remove your own time off.");
+
   await db.timeOff.delete({ where: { id: timeOffId } });
   revalidatePath("/preferences");
   revalidatePath("/schedule");
