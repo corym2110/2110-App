@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { db } from "./db";
+import { getCurrentCoach } from "./coaches";
 import { addDays, dowIndex, DOW_LABELS, isoOf, minutesUntil, slotKey } from "@/lib/time";
 import { parseInput, IsoDateSchema } from "@/lib/validate";
 import {
@@ -539,6 +540,8 @@ export async function getCoachAvailability(coachId: string): Promise<CoachAvaila
 
 export async function setWeeklyHours(coachId: string, hours: WeeklyHours): Promise<ActionResult> {
   return runAction(async () => {
+    const requester = await getCurrentCoach();
+    if (!requester || (requester.id !== coachId && !requester.isAdmin)) throw new Error("You can only edit your own availability.");
     const data = parseInput(WeeklyHoursSchema, hours);
     await db.coach.update({ where: { id: coachId }, data: { weeklyHours: data as object } });
     revalidatePath("/preferences");
@@ -548,6 +551,8 @@ export async function setWeeklyHours(coachId: string, hours: WeeklyHours): Promi
 
 export async function addTimeOff(coachId: string, entry: TimeOffEntry): Promise<ActionResult> {
   return runAction(async () => {
+    const requester = await getCurrentCoach();
+    if (!requester || (requester.id !== coachId && !requester.isAdmin)) throw new Error("You can only edit your own time off.");
     const data = parseInput(TimeOffEntrySchema, entry);
     await db.timeOff.create({ data: { coachId, fromIso: data.from, toIso: data.to, reason: data.reason, type: data.type } });
     revalidatePath("/preferences");

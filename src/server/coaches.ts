@@ -92,6 +92,8 @@ export async function addCoach(input: NewCoachInput): Promise<ActionResult<strin
 
 export async function updateCoachPreferences(coachId: string, input: CoachPreferencesInput): Promise<ActionResult> {
   return runAction(async () => {
+    const requester = await getCurrentCoach();
+    if (!requester || (requester.id !== coachId && !requester.isAdmin)) throw new Error("You can only edit your own preferences.");
     const data = parseInput(CoachPreferencesInputSchema, input);
     await db.coach.update({
       where: { id: coachId },
